@@ -1,0 +1,8 @@
+{
+  "COMBATCOMPANION": {
+    "ToggleTitle": "Toggle Combat Companion",
+    "PanelTitle": "Combat Companion",
+    "PopoutTitle": "Combat Companion (Detached)",
+    "NoTokenSelected": "Select a token"
+  }
+}

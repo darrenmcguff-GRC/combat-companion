@@ -1,0 +1,17 @@
+{
+  "id": "combat-companion",
+  "title": "Combat Companion",
+  "description": "A persistent tactical HUD for D&D 5e – action economy, conditions, spells with slots, weapon attacks, saving throws, features & abilities, and more.",
+  "version": "1.4.0",
+  "authors": [{"name": "Steve", "flags": {}}],
+  "compatibility": {
+    "minimum": "11",
+    "verified": "14",
+    "maximum": "14"
+  },
+  "esmodules": ["scripts/main.js"],
+  "styles": ["styles/combat-companion.css"],
+  "manifest": "https://petite-wombats-stop.loca.lt/module.json",
+  "download": "https://petite-wombats-stop.loca.lt/combat-companion.zip",
+  "url": "https://combat-companion.loca.lt"
+}
