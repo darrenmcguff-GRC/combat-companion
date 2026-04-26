@@ -1,17 +1,28 @@
 {
   "id": "combat-companion",
   "title": "Combat Companion",
-  "description": "A persistent tactical HUD for D&D 5e – action economy, conditions, spells with slots, weapon attacks, saving throws, features & abilities, and more.",
+  "description": "A persistent tactical HUD for D&D 5e \u2013 action economy, conditions, spells with slots, weapon attacks, saving throws, features & abilities, and more.",
   "version": "1.4.0",
-  "authors": [{"name": "Steve", "flags": {}}],
+  "authors": [
+    {
+      "name": "Steve",
+      "flags": {}
+    }
+  ],
   "compatibility": {
     "minimum": "11",
     "verified": "14",
     "maximum": "14"
   },
-  "esmodules": ["scripts/main.js"],
-  "styles": ["styles/combat-companion.css"],
-  "manifest": "https://petite-wombats-stop.loca.lt/module.json",
-  "download": "https://petite-wombats-stop.loca.lt/combat-companion.zip",
-  "url": "https://combat-companion.loca.lt"
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/combat-companion.css"
+  ],
+  "manifest": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/module.json",
+  "download": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/combat-companion.zip",
+  "url": "https://github.com/darrenmcguff-GRC/combat-companion",
+  "readme": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/README.md",
+  "license": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/LICENSE.txt"
 }
