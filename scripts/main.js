@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.3.0`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.0`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -335,12 +335,52 @@ class CombatCompanion {
       }
     } catch(e){}
 
+    // Ability scores
+    const abilities = [];
+    try {
+      const abs = sys.abilities || {};
+      const abiMap = { str:'STR', dex:'DEX', con:'CON', int:'INT', wis:'WIS', cha:'CHA' };
+      for (const [key, label] of Object.entries(abiMap)) {
+        const a = abs[key] || {};
+        abilities.push({ key, label, value: a.value ?? 10, mod: a.mod ?? 0 });
+      }
+    } catch(e){}
+
+    // Skills
+    const skills = [];
+    try {
+      const sk = sys.skills || {};
+      const skillMap = {
+        acr:'Acrobatics', ani:'Animal Handling', arc:'Arcana', ath:'Athletics',
+        dec:'Deception', his:'History', ins:'Insight', itm:'Intimidation',
+        inv:'Investigation', med:'Medicine', nat:'Nature', prc:'Perception',
+        prf:'Performance', per:'Persuasion', rel:'Religion', slt:'Sleight of Hand',
+        ste:'Stealth', sur:'Survival'
+      };
+      for (const [key, name] of Object.entries(skillMap)) {
+        const s = sk[key] || {};
+        skills.push({ key, name, total: s.total ?? 0, prof: s.proficient ?? 0, ability: s.ability || '' });
+      }
+    } catch(e){}
+
+    // Reaction items (from feats + spells that use a reaction)
+    const reactionItems = [];
+    try {
+      for (const it of (actor.items||[])) {
+        const act = it.system?.activation?.type || '';
+        if (act === 'reaction' || act.includes('reaction')) {
+          reactionItems.push(it);
+        }
+      }
+    } catch(e){}
+
     return {
       actor, img:actor.img||actor.prototypeToken?.texture?.src||'icons/svg/mystery-man.svg',
       name:actor.name||'Unknown', ac:acVal,
       hp:{current:hpCurrent, max:hpMax, temp:hpTemp, tempmax:hpTempmax},
       prof:profBonus, conditions, concentration, initiative:initVal,
       reactionAvailable, weapons, spells, features, spellSlots, resources, savingThrows,
+      abilities, skills, reactionItems,
       isNPC:actor.type==='npc',
       labels:actor.labels||{}
     };
@@ -374,6 +414,7 @@ class CombatCompanion {
     const sections = [
       this._actorCard(data),
       this._reactionBox(data),
+      this._skillsBox(data),
       this._savingThrowsBox(data),
       this._conditionsBox(data),
       this._weaponsBox(data),
@@ -402,17 +443,68 @@ class CombatCompanion {
         <div class="cc-hp-bar"><div style="width:${pct}%;background:${col}"></div></div>
         <span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span>
         ${d.hp.temp?`<span class="cc-temp">+${d.hp.temp} temp</span>`:''}
-      </div></div>`);
+      </div></div>
+      <div class="cc-stats-row">${(d.abilities||[]).map(a=>{
+        const sign=a.mod>=0?'+':'';
+        return `<div class="cc-stat" title="${a.label}">
+          <span class="cc-stat-label">${a.label}</span>
+          <span class="cc-stat-value">${a.value}</span>
+          <span class="cc-stat-mod">${sign}${a.mod}</span>
+        </div>`;
+      }).join('')}</div>`);
   }
 
   static _reactionBox(d) {
     const avail = d.reactionAvailable;
     const cls = avail ? 'cc-reaction-avail' : 'cc-reaction-spent';
     const text = avail ? '🛡️ Reaction Available' : '🛡️⛔ Reaction Used';
+    const items = d.reactionItems || [];
+    const itemList = items.length
+      ? `<div class="cc-react-items">${items.map(it => {
+          const actType = (it.system?.activation?.type || '').toLowerCase();
+          let badge = '';
+          if (actType==='action') badge = '<span class="cc-badge act">A</span>';
+          else if (actType==='bonus') badge = '<span class="cc-badge bns">B</span>';
+          else if (actType==='reaction' || actType.includes('reaction')) badge = '<span class="cc-badge rct">R</span>';
+          else badge = '';
+          let uses = it.system?.uses;
+          let usesText = '';
+          if (uses && uses.max > 0) { usesText = ` (${uses.value ?? uses.max}/${uses.max})`; }
+          else if (it.system?.recovery?.length && it.system.recovery.some(r=> r.period)) {
+            const r = it.system.recovery[0];
+            const periodMap = {'sr':'short rest','lr':'long rest','day':'daily','dawn':'dawn','dusk':'dusk'};
+            usesText = ' (' + (periodMap[r.period] || r.period) + ')';
+          }
+          return `<button class="cc-item-btn cc-react-item" data-item-id="${it.id}" data-type="${it.type}">
+            <img src="${it.img||'icons/svg/mystery-man.svg'}" loading="lazy">
+            <span>${it.name}</span>
+            <div class="cc-badges">${badge}<small>${usesText}</small></div>
+          </button>`;
+        }).join('')}</div>`
+      : '<em class="cc-muted">No reaction abilities</em>';
     return this._wrap('Reaction', `
       <button class="cc-reaction-btn ${cls}" data-type="reaction">
         ${text}
-      </button>`);
+      </button>
+      ${itemList}`);
+  }
+
+  /* ─── Skills ─────────────────────────────────────────────────── */
+  static _skillsBox(d) {
+    if (!d.skills?.length) return '';
+    const rows = d.skills.map(s => {
+      const sign = s.total >= 0 ? '+' : '';
+      const abilityShort = s.ability ? s.ability.slice(0, 3).toUpperCase() : '';
+      const profIcon = s.prof ? '<i class="fas fa-check-circle"></i>' : '<i class="far fa-circle"></i>';
+      const cls = s.prof ? 'cc-skill-prof' : '';
+      return `<div class="cc-skill-row ${cls}" data-skill="${s.key}" title="${s.name} (${s.ability||'?'})">
+        <span class="cc-skill-name">${s.name}</span>
+        <span class="cc-skill-abi">${abilityShort}</span>
+        <span class="cc-skill-mod">${sign}${s.total}</span>
+        <span class="cc-skill-prof-icon">${profIcon}</span>
+      </div>`;
+    }).join('');
+    return this._wrap('Skills', rows);
   }
 
   static _savingThrowsBox(d) {
@@ -770,6 +862,28 @@ class CombatCompanion {
         }
         CombatCompanion.refresh();
       } catch(e) { console.warn('[Combat Companion] toggle failed:',e); }
+    });
+
+    // Skills — click to roll
+    $('.cc-skill-row').off('click.cc-skill').on('click.cc-skill', function(){
+      const actor=CombatCompanion.actor; if (!actor) return;
+      const key=$(this).data('skill');
+      try {
+        if (actor.rollSkill) { actor.rollSkill(key); }
+        else {
+          const sk = actor.system?.skills?.[key];
+          if (!sk) return;
+          const total = sk.total ?? 0;
+          const sign = total >= 0 ? '+' : '';
+          const name = sk.name || key;
+          ChatMessage.create({
+            speaker: ChatMessage.getSpeaker({actor}),
+            flavor: `${name} Check`,
+            content: `<p><strong>${name}</strong>: 1d20 ${sign}${total}</p>`,
+            rolls: [new Roll(`1d20 ${sign}${total}`, actor.getRollData()).evaluateSync()]
+          });
+        }
+      } catch(e) { console.warn('[Combat Companion] skill roll failed:',e); }
     });
 
     // Saving throws

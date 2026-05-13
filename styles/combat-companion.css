@@ -322,3 +322,64 @@
 .cc-resource span { flex: 1; color: #8899aa; }
 .cc-resource input { width: 40px; background: #111522; border: 1px solid #2c3e50; border-radius: 4px; color: #fff; text-align: center; padding: 2px; font-size: 13px; }
 .cc-resource input:focus { border-color: #f39c12; outline: none; }
+
+/* ─── Stats row (STR/DEX/CON/INT/WIS/CHA) ──────────────────────────── */
+.cc-stats-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  justify-content: space-between;
+}
+.cc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #0f131a;
+  border: 1px solid #2c3e50;
+  border-radius: 5px;
+  padding: 4px 6px;
+  flex: 1;
+  min-width: 0;
+}
+.cc-stat-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #667788;
+}
+.cc-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+.cc-stat-mod {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8899aa;
+}
+
+/* ─── Skills rows ──────────────────────────────────────────────────── */
+.cc-skill-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.cc-skill-row:hover { background: #1a2230; }
+.cc-skill-name  { flex: 1; font-size: 12px; color: #9fb1c6; }
+.cc-skill-abi   { font-size: 9px; color: #667788; text-transform: uppercase; width: 28px; text-align: center; font-weight: 600; }
+.cc-skill-mod   { font-size: 13px; font-weight: 700; color: #ccd6e4; min-width: 28px; text-align: center; }
+.cc-skill-prof-icon { font-size: 10px; color: #667788; width: 16px; text-align: center; }
+.cc-skill-row.cc-skill-prof .cc-skill-prof-icon { color: #f39c12; }
+.cc-skill-row.cc-skill-prof .cc-skill-mod { color: #f39c12; }
+
+/* ─── Reaction items list ──────────────────────────────────────────── */
+.cc-react-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
