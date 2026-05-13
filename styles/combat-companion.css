@@ -340,7 +340,10 @@
   padding: 4px 6px;
   flex: 1;
   min-width: 0;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.15s;
 }
+.cc-stat:hover { background: #1a2230; border-color: #f39c12; }
 .cc-stat-label {
   font-size: 9px;
   font-weight: 700;

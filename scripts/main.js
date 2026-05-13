@@ -446,7 +446,7 @@ class CombatCompanion {
       </div></div>
       <div class="cc-stats-row">${(d.abilities||[]).map(a=>{
         const sign=a.mod>=0?'+':'';
-        return `<div class="cc-stat" title="${a.label}">
+        return `<div class="cc-stat" data-stat="${a.key}" title="${a.label} — click to roll">
           <span class="cc-stat-label">${a.label}</span>
           <span class="cc-stat-value">${a.value}</span>
           <span class="cc-stat-mod">${sign}${a.mod}</span>
@@ -862,6 +862,29 @@ class CombatCompanion {
         }
         CombatCompanion.refresh();
       } catch(e) { console.warn('[Combat Companion] toggle failed:',e); }
+    });
+
+    // Stats — click to roll ability check and save
+    $('.cc-stat').off('click.cc-stat').on('click.cc-stat', function(){
+      const actor=CombatCompanion.actor; if (!actor) return;
+      const key=$(this).data('stat');
+      try {
+        if (actor.rollAbility) { actor.rollAbility(key); }
+        else {
+          const abs = actor.system?.abilities || {};
+          const a = abs[key];
+          if (!a) return;
+          const mod = a.mod ?? 0;
+          const sign = mod >= 0 ? '+' : '';
+          const label = (a.label || key).toUpperCase();
+          ChatMessage.create({
+            speaker: ChatMessage.getSpeaker({actor}),
+            flavor: `${label} Check`,
+            content: `<p><strong>${label}</strong>: 1d20 ${sign}${mod}</p>`,
+            rolls: [new Roll(`1d20 ${sign}${mod}`, actor.getRollData()).evaluateSync()]
+          });
+        }
+      } catch(e) { console.warn('[Combat Companion] stat roll failed:',e); }
     });
 
     // Skills — click to roll
