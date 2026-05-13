@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.3`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.4`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -1034,32 +1034,38 @@ class CombatCompanion {
     });
 
     // Saving throws
-    $('.cc-save-row').off('click.cc-save').on('click.cc-save', function(){
+    $('.cc-save-row').off('click.cc-save').on('click.cc-save', async function(){
       const actor=CombatCompanion.actor; if (!actor) return;
       const key=$(this).data('save');
-      const ability = key.toLowerCase();
+      // dnd5e v3+ native rollAbilitySave
+      if (typeof actor.rollAbilitySave === 'function') {
+        try {
+          await actor.rollAbilitySave(key);
+          CombatCompanion.refreshDebounced();
+          return;
+        } catch(e) {
+          console.warn('[Combat Companion] rollAbilitySave threw:', e);
+        }
+      }
+      // Fallback: manual ChatMessage with proper roll
       try {
         const abs = actor.system?.abilities || {};
-        const a = abs[ability];
+        const a = abs[key];
         if (!a) return;
-        // Let dnd5e handle the actual roll — just request it
-        if (actor.rollAbilitySave) {
-          actor.rollAbilitySave(ability);
-        } else {
-          // Fallback: manual chat message
-          const mod = a.mod ?? 0;
-          const prof = a.proficient ?? 0;
-          const profBonus = actor.system?.attributes?.prof ?? 0;
-          const total = prof ? (mod + profBonus) : mod;
-          const sign = total >= 0 ? '+' : '';
-          ChatMessage.create({
-            speaker: ChatMessage.getSpeaker({actor}),
-            flavor: `${a.label || ability.toUpperCase()} Saving Throw`,
-            content: `<p><strong>${a.label || ability.toUpperCase()} Save</strong>: 1d20 ${sign}${total}</p>`,
-            rolls: [new Roll(`1d20 ${sign}${total}`, actor.getRollData()).evaluateSync()]
-          });
-        }
-      } catch(e) { console.warn('[Combat Companion] save roll failed:',e); }
+        const mod = a.mod ?? 0;
+        const prof = a.proficient ?? 0;
+        const profBonus = actor.system?.attributes?.prof ?? 0;
+        const total = prof ? (mod + profBonus) : mod;
+        const sign = total >= 0 ? '+' : '';
+        const label = a.label || key.charAt(0).toUpperCase() + key.slice(1);
+        const rollData = actor.getRollData();
+        const roll = new Roll(`1d20${sign}${Math.abs(total)}`, rollData);
+        await roll.evaluate({async: true});
+        await roll.toMessage({
+          speaker: ChatMessage.getSpeaker({actor}),
+          flavor: `${label} Saving Throw`
+        });
+      } catch(e2) { console.warn('[Combat Companion] save roll fallback failed:', e2); }
     });
   }
 }
