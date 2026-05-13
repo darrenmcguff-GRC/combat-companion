@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.2`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.3`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -763,6 +763,98 @@ class CombatCompanion {
     return this._wrap('Resources', list);
   }
 
+  /* ─── Right-click description popup ──────────────────────────── */
+  static _showItemDescription(item, event) {
+    // Remove any existing popup
+    $('#cc-desc-popup').remove();
+
+    const name = item.name || 'Unknown';
+    const img = item.img || 'icons/svg/mystery-man.svg';
+    const type = item.type || 'item';
+    const sys = item.system || {};
+    const desc = sys.description?.value || sys.description || '';
+
+    // Strip HTML tags for a clean preview, keep basic formatting
+    const stripHtml = (html) => {
+      if (!html) return '';
+      // Replace common block tags with newlines
+      let text = html.replace(/<\/p>/gi, '\n\n').replace(/<\/li>/gi, '\n').replace(/<\/tr>/gi, '\n').replace(/<\/div>/gi, '\n');
+      text = text.replace(/<br\s*\/?>/gi, '\n');
+      text = text.replace(/<[^>]+>/g, '');
+      text = text.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      text = text.replace(/\n{3,}/g, '\n\n').trim();
+      return text;
+    };
+
+    const cleanDesc = stripHtml(desc);
+    const shortDesc = cleanDesc.length > 600 ? cleanDesc.substring(0, 597) + '...' : cleanDesc;
+
+    // Build properties string
+    const properties = [];
+    if (type === 'weapon') {
+      if (sys.attackBonus || sys.attack?.bonus) properties.push(`Attack +${sys.attackBonus ?? sys.attack?.bonus}`);
+      if (sys.damage?.parts?.length || sys.damage?.base) {
+        const dmg = sys.damage?.parts?.map(p => Array.isArray(p) ? p[0] : p).join(' + ') || 
+                    (sys.damage.base ? `${sys.damage.base.number}d${sys.damage.base.faces}` : '');
+        if (dmg) properties.push(`Damage: ${dmg}`);
+      }
+      if (sys.range?.value) properties.push(`Range: ${sys.range.value} ft`);
+    }
+    if (type === 'spell') {
+      const lvl = sys.level ?? 0;
+      properties.push(lvl === 0 ? 'Cantrip' : `Level ${lvl}`);
+      if (sys.school) properties.push(sys.school.label || sys.school);
+      if (sys.duration?.value) properties.push(`Duration: ${sys.duration.value} ${sys.duration.units || ''}`);
+      if (sys.range?.value) properties.push(`Range: ${sys.range.value} ft`);
+      if (sys.activation?.cost) properties.push(`Cast: ${sys.activation.cost} ${sys.activation.type || ''}`);
+    }
+    if (sys.activation?.type) {
+      const actType = sys.activation.type;
+      const cost = sys.activation.cost || '';
+      if (!properties.some(p => p.toLowerCase().includes('cast') && type === 'spell')) {
+        properties.push(`Action: ${cost ? cost + ' ' : ''}${actType}`);
+      }
+    }
+
+    const propsHtml = properties.length 
+      ? `<div class="cc-desc-props">${properties.map(p => `<span class="cc-desc-tag">${p}</span>`).join('')}</div>` 
+      : '';
+
+    const pos = { left: event.clientX + 15, top: event.clientY - 10 };
+    const panel = $('#cc-sidebar');
+    if (panel.length) {
+      const panelOffset = panel.offset();
+      const panelRight = panelOffset.left + panel.outerWidth();
+      if (pos.left + 320 > window.innerWidth) pos.left = event.clientX - 340;
+      if (pos.left < 10) pos.left = 10;
+    }
+
+    const popup = $(`
+      <div id="cc-desc-popup" class="cc-desc-popup" style="left:${pos.left}px;top:${pos.top}px;">
+        <div class="cc-desc-header">
+          <img src="${img}" alt="" loading="lazy">
+          <span>${name}</span>
+          <i class="fas fa-times cc-desc-close"></i>
+        </div>
+        ${propsHtml}
+        <div class="cc-desc-body">${cleanDesc ? cleanDesc.split('\n').map(p => p.trim() ? `<p>${p}</p>` : '').join('') : '<em>No description</em>'}</div>
+      </div>
+    `);
+    $('body').append(popup);
+
+    // Close handlers
+    popup.find('.cc-desc-close').on('click', () => popup.remove());
+    // Close on click outside
+    setTimeout(() => {
+      $(document).one('mousedown.cc-desc', (e) => {
+        if (!$(e.target).closest('#cc-desc-popup').length) {
+          popup.remove();
+          $(document).off('mousedown.cc-desc');
+        }
+      });
+    }, 10);
+  }
+
   static _wrap(title, body) {
     const cid='cc-box-'+title.replace(/[^a-z0-9]/gi,'');
     let collapsed=false;
@@ -795,14 +887,23 @@ class CombatCompanion {
   }
 
   static _bindInteractions(data) {
-    // Items
-    $('.cc-item-btn').off('click.cc-item').on('click.cc-item', function(){
+    // Items — left click to use, right click for description
+    $('.cc-item-btn').off('click.cc-item contextmenu.cc-item').on('click.cc-item', function(){
       const id=$(this).data('item-id');
       const actor=CombatCompanion.actor;
       if (!actor) return;
       const item=actor.items.get(id);
       if (!item) return;
       try { item.use?.(); } catch(e){ console.warn('[Combat Companion] item.use failed:',e); ui.notifications?.warn?.('Could not use item.'); }
+    }).on('contextmenu.cc-item', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      const id=$(this).data('item-id');
+      const actor=CombatCompanion.actor;
+      if (!actor) return;
+      const item=actor.items.get(id);
+      if (!item) return;
+      CombatCompanion._showItemDescription(item, e);
     });
 
     // Spell slots
