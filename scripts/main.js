@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.1`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.2`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -359,7 +359,7 @@ class CombatCompanion {
       };
       for (const [key, name] of Object.entries(skillMap)) {
         const s = sk[key] || {};
-        skills.push({ key, name, total: s.total ?? 0, prof: s.proficient ?? 0, ability: s.ability || '' });
+        skills.push({ key, name, total: s.value ?? s.total ?? s.mod ?? 0, prof: s.proficient ?? 0, ability: s.ability || '' });
       }
     } catch(e){}
 
@@ -865,48 +865,71 @@ class CombatCompanion {
     });
 
     // Stats — click to roll ability check and save
-    $('.cc-stat').off('click.cc-stat').on('click.cc-stat', function(){
+    $('.cc-stat').off('click.cc-stat').on('click.cc-stat', async function(){
       const actor=CombatCompanion.actor; if (!actor) return;
       const key=$(this).data('stat');
       try {
-        if (actor.rollAbility) { actor.rollAbility(key); }
-        else {
-          const abs = actor.system?.abilities || {};
-          const a = abs[key];
-          if (!a) return;
-          const mod = a.mod ?? 0;
-          const sign = mod >= 0 ? '+' : '';
-          const label = (a.label || key).toUpperCase();
-          ChatMessage.create({
-            speaker: ChatMessage.getSpeaker({actor}),
-            flavor: `${label} Check`,
-            content: `<p><strong>${label}</strong>: 1d20 ${sign}${mod}</p>`,
-            rolls: [new Roll(`1d20 ${sign}${mod}`, actor.getRollData()).evaluateSync()]
-          });
+        // dnd5e v3+ native rollAbility (opens the dialog)
+        if (typeof actor.rollAbility === 'function') {
+          await actor.rollAbility(key);
+          CombatCompanion.refreshDebounced();
+          return;
         }
-      } catch(e) { console.warn('[Combat Companion] stat roll failed:',e); }
+      } catch(e) {
+        console.warn('[Combat Companion] rollAbility threw, using fallback:', e);
+      }
+      // Fallback: manual ChatMessage
+      try {
+        const abs = actor.system?.abilities || {};
+        const a = abs[key];
+        if (!a) return;
+        const mod = a.mod ?? 0;
+        const sign = mod >= 0 ? '+' : '';
+        const label = (a.label || key).toUpperCase();
+        const roll = await new Roll(`1d20${sign}${Math.abs(mod)}`).evaluate({async: true});
+        await roll.toMessage({
+          speaker: ChatMessage.getSpeaker({actor}),
+          flavor: `${label} Check`
+        });
+      } catch(e2) { console.warn('[Combat Companion] stat fallback failed:', e2); }
     });
 
     // Skills — click to roll
-    $('.cc-skill-row').off('click.cc-skill').on('click.cc-skill', function(){
+    $('.cc-skill-row').off('click.cc-skill').on('click.cc-skill', async function(){
       const actor=CombatCompanion.actor; if (!actor) return;
       const key=$(this).data('skill');
-      try {
-        if (actor.rollSkill) { actor.rollSkill(key); }
-        else {
-          const sk = actor.system?.skills?.[key];
-          if (!sk) return;
-          const total = sk.total ?? 0;
-          const sign = total >= 0 ? '+' : '';
-          const name = sk.name || key;
-          ChatMessage.create({
-            speaker: ChatMessage.getSpeaker({actor}),
-            flavor: `${name} Check`,
-            content: `<p><strong>${name}</strong>: 1d20 ${sign}${total}</p>`,
-            rolls: [new Roll(`1d20 ${sign}${total}`, actor.getRollData()).evaluateSync()]
-          });
+      const labelMap = {
+        acr:'Acrobatics', ani:'Animal Handling', arc:'Arcana', ath:'Athletics',
+        dec:'Deception', his:'History', ins:'Insight', itm:'Intimidation',
+        inv:'Investigation', med:'Medicine', nat:'Nature', prc:'Perception',
+        prf:'Performance', per:'Persuasion', rel:'Religion', slt:'Sleight of Hand',
+        ste:'Stealth', sur:'Survival'
+      };
+      // Use the dnd5e system's native skill roll when available
+      if (typeof actor.rollSkill === 'function') {
+        try {
+          await actor.rollSkill(key, {});
+          CombatCompanion.refreshDebounced();
+          return;
+        } catch(e) {
+          console.warn('[Combat Companion] rollSkill threw:', e);
         }
-      } catch(e) { console.warn('[Combat Companion] skill roll failed:',e); }
+      }
+      // Fallback: build a proper dnd5e roll message
+      try {
+        const sk = actor.system?.skills?.[key];
+        if (!sk) { console.warn('[Combat Companion] skill not found:', key); return; }
+        const total = sk.value ?? sk.total ?? sk.mod ?? 0;
+        const sign = total >= 0 ? '+' : '';
+        const label = sk.label || labelMap[key] || key.charAt(0).toUpperCase() + key.slice(1);
+        const rollData = actor.getRollData();
+        const roll = new Roll(`1d20${sign}${Math.abs(total)}`, rollData);
+        await roll.evaluate({async: true});
+        await roll.toMessage({
+          speaker: ChatMessage.getSpeaker({actor}),
+          flavor: `${label} Check`
+        });
+      } catch(e2) { console.warn('[Combat Companion] skill fallback failed:', e2); }
     });
 
     // Saving throws
