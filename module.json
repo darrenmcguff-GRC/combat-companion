@@ -2,7 +2,7 @@
   "id": "combat-companion",
   "title": "Combat Companion",
   "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more.",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "authors": [
     {
       "name": "Steve",
