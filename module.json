@@ -2,7 +2,7 @@
   "id": "combat-companion",
   "title": "Combat Companion",
   "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more.",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "authors": [
     {
       "name": "Steve",
@@ -21,7 +21,7 @@
     "styles/combat-companion.css"
   ],
   "manifest": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/module.json",
-  "download": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/combat-companion.zip",
+  "download": "https://github.com/darrenmcguff-GRC/combat-companion/archive/refs/tags/v1.5.5.zip",
   "url": "https://github.com/darrenmcguff-GRC/combat-companion",
   "readme": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/README.md",
   "license": "https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/LICENSE.txt"

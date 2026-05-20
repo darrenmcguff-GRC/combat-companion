@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.4`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.5`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -244,7 +244,7 @@ class CombatCompanion {
 
     // Initiative
     let initVal = 0;
-    try { initVal = attrs.init?.total ?? attrs.init?.value ?? attrs.init ?? sys.abilities?.dex?.mod ?? 0; } catch(e){}
+    try { initVal = attrs.init?.total ?? attrs.init?.value ?? attrs.init ?? 0; } catch(e){}
 
     // Conditions
     const conditions = [];
@@ -293,8 +293,7 @@ class CombatCompanion {
     const resources = [];
     try { for (const r of Object.values(sys.resources||{})) { if (r && (r.max??0)>0) resources.push(r); } } catch(e){}
 
-    // Actions: v3 stores action/bonus/reaction in system.uses.actions.
-    // We only track reaction now.
+    // Actions: track reaction
     let reactionAvailable = true;
     try {
       const u = actor.system?.uses?.actions;
@@ -313,7 +312,6 @@ class CombatCompanion {
       // Check for reaction items used this round
       const lastUsed = actor.getFlag(MODULE_ID, 'reactionUsedRound');
       if (lastUsed && game.combat && game.combat.round === lastUsed) {
-        // only disable if combat is active and we're in the same round
         if (game.combat.started) { reactionAvailable = false; }
       }
     } catch(e){}
@@ -321,32 +319,54 @@ class CombatCompanion {
     // Proficiency bonus
     const profBonus = attrs.prof ?? 0;
 
-    // Saving throws
-    const savingThrows = [];
-    try {
-      const abs = sys.abilities || {};
-      const saveMap = { str:'Strength', dex:'Dexterity', con:'Constitution', int:'Intelligence', wis:'Wisdom', cha:'Charisma' };
-      for (const [key, name] of Object.entries(saveMap)) {
-        const a = abs[key] || {};
-        const prof = a.proficient ?? 0;
-        const mod  = a.mod ?? 0;
-        const saveMod = prof ? (mod + profBonus) : mod;
-        savingThrows.push({ key, name, mod, prof: prof>0, saveMod });
-      }
-    } catch(e){}
+    // ── Helper: compute ability mod from score ──
+    const _abiMod = (a) => {
+      if (!a) return 0;
+      // dnd5e v4.x stores mod as a numeric value in v3 compat OR a formula string
+      const m = a.mod;
+      if (typeof m === 'number') return m;
+      // Fallback: compute from ability score
+      const val = a.value ?? 10;
+      return Math.floor((val - 10) / 2);
+    };
 
-    // Ability scores
+    // Helper: get raw score, for display
+    const _abiValue = (a) => {
+      if (!a) return 10;
+      return a.value ?? 10;
+    };
+
+    // ── Ability scores ──
+    const abs = sys.abilities || {};
     const abilities = [];
     try {
-      const abs = sys.abilities || {};
       const abiMap = { str:'STR', dex:'DEX', con:'CON', int:'INT', wis:'WIS', cha:'CHA' };
       for (const [key, label] of Object.entries(abiMap)) {
         const a = abs[key] || {};
-        abilities.push({ key, label, value: a.value ?? 10, mod: a.mod ?? 0 });
+        const mod = _abiMod(a);
+        abilities.push({ key, label, value: _abiValue(a), mod });
       }
     } catch(e){}
 
-    // Skills
+    // ── Compute a map of ability key -> mod for skill calculations ──
+    const abiModMap = {};
+    for (const ab of abilities) { abiModMap[ab.key] = ab.mod; }
+
+    // ── Saving throws ──
+    const savingThrows = [];
+    try {
+      const saveMap = { str:'Strength', dex:'Dexterity', con:'Constitution', int:'Intelligence', wis:'Wisdom', cha:'Charisma' };
+      for (const [key, name] of Object.entries(saveMap)) {
+        const a = abs[key] || {};
+        // dnd5e v4.x: proficient is a multiplier (0, 0.5, 1, 2) not a boolean
+        const profMult = typeof a.proficient === 'number' ? a.proficient : 0;
+        const mod = _abiMod(a);
+        const saveMod = profMult ? mod + profBonus * profMult : mod;
+        savingThrows.push({ key, name, mod, prof: profMult > 0, saveMod });
+      }
+    } catch(e){}
+
+    // ── Skills ──
     const skills = [];
     try {
       const sk = sys.skills || {};
@@ -359,7 +379,14 @@ class CombatCompanion {
       };
       for (const [key, name] of Object.entries(skillMap)) {
         const s = sk[key] || {};
-        skills.push({ key, name, total: s.value ?? s.total ?? s.mod ?? 0, prof: s.proficient ?? 0, ability: s.ability || '' });
+        // dnd5e v4.x: s.value is NOT the total modifier — compute from ability mod + prof multiplier + bonus
+        const abiKey = s.ability || 'int';
+        const abilityMod = abiModMap[abiKey] ?? 0;
+        // Prof multiplier: 0, 0.5, 1, 2 (expertise)
+        const profMult = typeof s.proficient === 'number' ? s.proficient : 0;
+        const bonus = typeof s.bonus === 'number' ? s.bonus : 0;
+        const total = abilityMod + (profMult * profBonus) + bonus;
+        skills.push({ key, name, total, prof: profMult, ability: s.ability || '' });
       }
     } catch(e){}
 
@@ -495,7 +522,7 @@ class CombatCompanion {
     const rows = d.skills.map(s => {
       const sign = s.total >= 0 ? '+' : '';
       const abilityShort = s.ability ? s.ability.slice(0, 3).toUpperCase() : '';
-      const profIcon = s.prof ? '<i class="fas fa-check-circle"></i>' : '<i class="far fa-circle"></i>';
+      const profIcon = s.prof >= 2 ? '<i class="fas fa-check-double"></i>' : s.prof ? '<i class="fas fa-check-circle"></i>' : '<i class="far fa-circle"></i>';
       const cls = s.prof ? 'cc-skill-prof' : '';
       return `<div class="cc-skill-row ${cls}" data-skill="${s.key}" title="${s.name} (${s.ability||'?'})">
         <span class="cc-skill-name">${s.name}</span>
@@ -970,7 +997,6 @@ class CombatCompanion {
       const actor=CombatCompanion.actor; if (!actor) return;
       const key=$(this).data('stat');
       try {
-        // dnd5e v3+ native rollAbility (opens the dialog)
         if (typeof actor.rollAbility === 'function') {
           await actor.rollAbility(key);
           CombatCompanion.refreshDebounced();
@@ -979,12 +1005,13 @@ class CombatCompanion {
       } catch(e) {
         console.warn('[Combat Companion] rollAbility threw, using fallback:', e);
       }
-      // Fallback: manual ChatMessage
+      // Fallback: manual ChatMessage — compute mod from score
       try {
         const abs = actor.system?.abilities || {};
         const a = abs[key];
         if (!a) return;
-        const mod = a.mod ?? 0;
+        const val = a.value ?? 10;
+        const mod = Math.floor((val - 10) / 2);
         const sign = mod >= 0 ? '+' : '';
         const label = (a.label || key).toUpperCase();
         const roll = await new Roll(`1d20${sign}${Math.abs(mod)}`).evaluate({async: true});
@@ -1020,7 +1047,14 @@ class CombatCompanion {
       try {
         const sk = actor.system?.skills?.[key];
         if (!sk) { console.warn('[Combat Companion] skill not found:', key); return; }
-        const total = sk.value ?? sk.total ?? sk.mod ?? 0;
+        // Compute total from ability mod + prof multiplier + bonus
+        const abiKey = sk.ability || 'int';
+        const abiScore = actor.system?.abilities?.[abiKey]?.value ?? 10;
+        const abiMod = Math.floor((abiScore - 10) / 2);
+        const profMult = typeof sk.proficient === 'number' ? sk.proficient : 0;
+        const bonus = typeof sk.bonus === 'number' ? sk.bonus : 0;
+        const profBonus = actor.system?.attributes?.prof ?? 0;
+        const total = abiMod + (profMult * profBonus) + bonus;
         const sign = total >= 0 ? '+' : '';
         const label = sk.label || labelMap[key] || key.charAt(0).toUpperCase() + key.slice(1);
         const rollData = actor.getRollData();
@@ -1052,10 +1086,11 @@ class CombatCompanion {
         const abs = actor.system?.abilities || {};
         const a = abs[key];
         if (!a) return;
-        const mod = a.mod ?? 0;
-        const prof = a.proficient ?? 0;
+        const val = a.value ?? 10;
+        const mod = Math.floor((val - 10) / 2);
+        const profMult = typeof a.proficient === 'number' ? a.proficient : 0;
         const profBonus = actor.system?.attributes?.prof ?? 0;
-        const total = prof ? (mod + profBonus) : mod;
+        const total = mod + (profMult * profBonus);
         const sign = total >= 0 ? '+' : '';
         const label = a.label || key.charAt(0).toUpperCase() + key.slice(1);
         const rollData = actor.getRollData();
