@@ -20,9 +20,9 @@ A persistent tactical HUD for Foundry VTT (D&D 5e). Gives players a floating sid
 
 ## Install
 
-Manifest URL:
+**Install via manifest URL in Foundry:**
 ```
-https://combat-companion.loca.lt/module.json
+https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/module.json
 ```
 
 ## Compatibility
@@ -33,7 +33,9 @@ https://combat-companion.loca.lt/module.json
 
 ## Version History
 
-- **v1.3.0** — Removed movement section; added weapon type filter, spell level filter, scrollable lists, saving throws section
+- **v1.5.6** — Fixes: dnd5e v4 activity damage extraction, remove deprecated getAttackToHit, filter re-render with fresh data, new sidebar.html popout template, add LICENSE, fix README install URL
+- **v1.5.5** — Fix: skills, abilities, and saving throws show wrong values for dnd5e v4.x data structure
+- **v1.5.4** — Fix saving throw rolls — async/await for dnd5e v3
 - **v1.2.7** — @mod resolution for damage formulas
 - **v1.2.6** — Fixed movement bar during combat, weapon damage resolution
 - **v1.0.0** — Initial release

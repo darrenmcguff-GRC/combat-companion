@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.5`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.6`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -454,7 +454,7 @@ class CombatCompanion {
     const html = sections.join('');
     $('#cc-sidebar .cc-body, #cc-popout .cc-body').html(html);
     this._bindBoxes();
-    this._bindFilters(data);
+    this._bindFilters();
     this._bindInteractions(data);
   }
 
@@ -635,7 +635,7 @@ class CombatCompanion {
   static _weaponStats(w) {
     try {
       const s = w.system||{}; let atk=null;
-      if (w.getAttackToHit) { try { const r=w.getAttackToHit(); if (typeof r==='number') atk=r; else if (r&&typeof r.value==='number') atk=r.value; else if (r&&typeof r.total==='number') atk=r.total; } catch(e){} }
+      // dnd5e v4 removed getAttackToHit — skip deprecated path entirely
       if (atk===null||atk===undefined) {
         atk = s.attack?.bonus ?? s.attackBonus ?? null;
         if ((atk===null||atk===undefined) && w.actor?.system) {
@@ -731,26 +731,31 @@ class CombatCompanion {
       // Save / roll info
       let rollInfo = '';
       try {
-        const act = s.system?.activities?.contents?.[0] || s.system?.activities?.[0];
+        const activities = s.system?.activities?.contents || Object.values(s.system?.activities || {});
+        const act = activities?.[0];
         if (act) {
-          const damage = act.damage?.parts?.length || act.damage?.length || (act.system?.damage?.parts?.length);
-          const save = act.save || act.ability || act.system?.save;
+          // dnd5e v4: damage lives on act.damage.parts (array of {number,faces,denomination,bonus})
+          // v3 compat: act.damage?.parts as flat strings, act.damage as strings
+          const dmgParts = act.damage?.parts || [];
+          const hasDamage = dmgParts.length > 0 || typeof act.damage?.formula === 'string';
+          const save = act.save?.ability || act.save || act.ability;
+          const dc = act.save?.dc || (s.actor?.system?.attributes?.spelldc);
           if (save) {
-            const saveAbil = save.ability || save.abil || save;
-            const dc = save.dc?.value || save.dc || (s.actor?.system?.attributes?.spelldc);
-            rollInfo = `DC${dc || '?'} ${String(saveAbil).slice(0,3).toUpperCase()} save`;
-          } else if (damage || act.attack) {
+            const abil = typeof save === 'string' ? save : (save.ability || save);
+            rollInfo = `DC${dc || '?'} ${String(abil).slice(0,3).toUpperCase()} save`;
+          } else if (act.attack) {
+            rollInfo = 'Attack roll';
+          } else if (hasDamage) {
             rollInfo = 'Attack roll';
           }
         }
-        // Fallback: look at spell description for save mentions
+        // Fallback: look at spell description for save/attack mentions
         if (!rollInfo && s.system?.description?.value) {
           const desc = s.system.description.value.toLowerCase();
-          const saveMatch = desc.match(/dc\s*\d+\s*(\w+)\s*saving/);
-          if (saveMatch) rollInfo = `Save (${saveMatch[1].slice(0,3)})`;
-          else if (desc.includes('attack roll')) rollInfo = 'Attack roll';
-          else if (desc.includes('ranged spell attack')) rollInfo = 'Ranged spell attack';
-          else if (desc.includes('melee spell attack')) rollInfo = 'Melee spell attack';
+          const saveMatch = desc.match(/dc\s*\d+\s*(?:(\w+)\s+)?saving/);
+          if (saveMatch && saveMatch[1]) rollInfo = `Save (${saveMatch[1].slice(0,3).toUpperCase()})`;
+          else if (desc.includes('saving throw') || desc.includes('saving')) rollInfo = 'Save';
+          else if (desc.includes('attack roll') || desc.includes('spell attack')) rollInfo = 'Attack roll';
         }
       } catch(e){}
       return `<button class="cc-item-btn" data-item-id="${s.id}" data-type="spell">
@@ -903,13 +908,13 @@ class CombatCompanion {
     });
   }
 
-  static _bindFilters(data) {
+  static _bindFilters() {
     $('.cc-filter').off('change.cc-filter').on('change.cc-filter', async function(){
       const type=$(this).data('filter');
       const val=$(this).val();
       const settingKey = type==='weapons'?'weaponFilter':type==='spells'?'spellFilter':'featureFilter';
       try { await game.settings.set(MODULE_ID, settingKey, val); } catch(e){}
-      CombatCompanion._renderAll(data);
+      CombatCompanion.refresh();
     });
   }
 
