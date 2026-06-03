@@ -33,6 +33,7 @@ https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/module.
 
 ## Version History
 
+- **v1.5.8** — HP controls: heal/damage/temp HP buttons with adjustable amount; death save tracking (3 fail + 3 pass dots, auto-shows at 0 HP, status: Dying/Stable/Dead)
 - **v1.5.7** — Add main menu toggle button (swords icon in controls bar), popout minimizable (click header to collapse/expand), active state styling
 - **v1.5.6** — Fixes: dnd5e v4 activity damage extraction, remove deprecated getAttackToHit, filter re-render with fresh data, new sidebar.html popout template, add LICENSE, fix README install URL
 - **v1.5.5** — Fix: skills, abilities, and saving throws show wrong values for dnd5e v4.x data structure

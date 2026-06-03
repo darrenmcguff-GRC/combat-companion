@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.7`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.8`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -276,6 +276,14 @@ class CombatCompanion {
     let hpCurrent=0, hpMax=1, hpTemp=0, hpTempmax=0;
     try { const hp=attrs.hp||{}; hpCurrent=hp.value??hp.current??0; hpMax=hp.max??1; hpTemp=hp.temp??0; hpTempmax=hp.tempmax??0; } catch(e){}
 
+    // Death saves
+    let deathFails = 0, deathPasses = 0;
+    try {
+      deathFails = parseInt(actor.getFlag(MODULE_ID, 'deathFail') || 0) || 0;
+      deathPasses = parseInt(actor.getFlag(MODULE_ID, 'deathPass') || 0) || 0;
+    } catch(e){}
+    const isDying = hpCurrent <= 0 && (actor.type === 'character' || actor.type === 'npc');
+
     // Initiative
     let initVal = 0;
     try { initVal = attrs.init?.total ?? attrs.init?.value ?? attrs.init ?? 0; } catch(e){}
@@ -443,7 +451,8 @@ class CombatCompanion {
       reactionAvailable, weapons, spells, features, spellSlots, resources, savingThrows,
       abilities, skills, reactionItems,
       isNPC:actor.type==='npc',
-      labels:actor.labels||{}
+      labels:actor.labels||{},
+      deathFails, deathPasses, isDying
     };
   }
 
@@ -497,14 +506,33 @@ class CombatCompanion {
     const hpCurTotal = d.hp.current + (d.hp.temp||0);
     const pct = hpMaxTotal>0 ? Math.max(0,Math.min(100,(hpCurTotal/hpMaxTotal)*100)) : 0;
     const col = pct>50?'#10b981':pct>25?'#f59e0b':'#f43f5e';
+    const isDead = d.hp.current <= 0;
+    const hpRow = d.hp.temp
+      ? `<span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span><span class="cc-temp">+${d.hp.temp} temp</span>`
+      : `<span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span>`;
     return this._wrap('Actor', `
       <div class="cc-actor"><img src="${d.img}" alt="" loading="lazy"><div>
         <strong>${d.name}</strong>
         <span class="cc-ac"><i class="fas fa-shield-halved"></i> ${d.ac} AC</span>
         <div class="cc-hp-bar"><div style="width:${pct}%;background:${col}"></div></div>
-        <span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span>
-        ${d.hp.temp?`<span class="cc-temp">+${d.hp.temp} temp</span>`:''}
+        ${hpRow}
       </div></div>
+      <!-- HP controls -->
+      <div class="cc-hp-controls">
+        <div class="cc-hp-row">
+          <button class="cc-hp-btn cc-hp-heal" data-hp-action="heal" title="Heal">+<i class="fas fa-plus"></i></button>
+          <button class="cc-hp-btn cc-hp-dmg" data-hp-action="damage" title="Damage"><i class="fas fa-minus"></i></button>
+          <input type="number" class="cc-hp-amount" value="1" min="1" max="999" step="1">
+          <span class="cc-hp-label">HP</span>
+        </div>
+        <div class="cc-hp-row">
+          <button class="cc-hp-btn cc-hp-temp" data-hp-action="temp" title="Add Temp HP"><i class="fas fa-shield"></i></button>
+          <input type="number" class="cc-hp-temp-amount" value="1" min="1" max="999" step="1">
+          <span class="cc-hp-label">Temp HP</span>
+          ${d.hp.temp ? `<button class="cc-hp-btn cc-hp-clear-temp" data-hp-action="clear-temp" title="Clear Temp HP"><i class="fas fa-times"></i></button>` : ''}
+        </div>
+      </div>
+      ${isDead ? this._deathSaveBox(d) : ''}
       <div class="cc-stats-row">${(d.abilities||[]).map(a=>{
         const sign=a.mod>=0?'+':'';
         return `<div class="cc-stat" data-stat="${a.key}" title="${a.label} — click to roll">
@@ -513,6 +541,45 @@ class CombatCompanion {
           <span class="cc-stat-mod">${sign}${a.mod}</span>
         </div>`;
       }).join('')}</div>`);
+  }
+
+  /* ─── Death Save Box ──────────────────────────────────────────── */
+  static _deathSaveBox(d) {
+    const maxDots = 3;
+    const fails = Array.from({length: maxDots}, (_, i) =>
+      `<span class="cc-death-dot cc-death-fail ${i < d.deathFails ? 'cc-death-filled' : ''}"></span>`
+    ).join('');
+    const passes = Array.from({length: maxDots}, (_, i) =>
+      `<span class="cc-death-dot cc-death-pass ${i < d.deathPasses ? 'cc-death-filled' : ''}"></span>`
+    ).join('');
+    const stable = d.deathPasses >= 3;
+    const dead = d.deathFails >= 3 || d.hp.current < 0;
+    let statusText = '';
+    let statusClass = '';
+    if (stable) { statusText = '✅ Stable'; statusClass = 'cc-death-stable'; }
+    else if (dead) { statusText = '💀 Dead'; statusClass = 'cc-death-dead'; }
+    else { statusText = '⬇️ Dying'; statusClass = 'cc-death-dying'; }
+    return `
+      <div class="cc-death-box ${statusClass}">
+        <div class="cc-death-header">
+          <span>${statusText}</span>
+          <button class="cc-hp-btn cc-death-reset" data-hp-action="death-reset" title="Reset death saves"><i class="fas fa-rotate-left"></i></button>
+        </div>
+        <div class="cc-death-rows">
+          <div class="cc-death-row">
+            <span class="cc-death-label">Fails</span>
+            <div class="cc-death-dots">${fails}</div>
+            <button class="cc-death-btn" data-death-type="fail" data-death-dir="1" title="Add fail"><i class="fas fa-plus"></i></button>
+            <button class="cc-death-btn" data-death-type="fail" data-death-dir="-1" title="Remove fail"><i class="fas fa-minus"></i></button>
+          </div>
+          <div class="cc-death-row">
+            <span class="cc-death-label">Passes</span>
+            <div class="cc-death-dots">${passes}</div>
+            <button class="cc-death-btn" data-death-type="pass" data-death-dir="1" title="Add pass"><i class="fas fa-plus"></i></button>
+            <button class="cc-death-btn" data-death-type="pass" data-death-dir="-1" title="Remove pass"><i class="fas fa-minus"></i></button>
+          </div>
+        </div>
+      </div>`;
   }
 
   static _reactionBox(d) {
@@ -995,6 +1062,55 @@ class CombatCompanion {
       if (!t) return;
       if (t.actor?.rollInitiativeDialog) t.actor.rollInitiativeDialog();
       else if (t.actor?.rollInitiative) t.actor.rollInitiative();
+    });
+
+    // HP controls
+    $('.cc-hp-btn').off('click.cc-hp').on('click.cc-hp', async function(){
+      const actor=CombatCompanion.actor; if (!actor) return;
+      const action=$(this).data('hp-action') || '';
+      const hp = actor.system?.attributes?.hp || {};
+      let cur = hp.value ?? hp.current ?? 0;
+      let max = hp.max ?? 1;
+      let temp = hp.temp ?? 0;
+      if (action === 'heal') {
+        const amt = parseInt($('.cc-hp-amount').val()) || 1;
+        await actor.update({'system.attributes.hp.value': Math.min(max, cur + amt)});
+      } else if (action === 'damage') {
+        const amt = parseInt($('.cc-hp-amount').val()) || 1;
+        let remaining = amt;
+        // Temp HP absorbs damage first
+        if (temp > 0) {
+          const tempUsed = Math.min(temp, remaining);
+          temp -= tempUsed;
+          remaining -= tempUsed;
+          await actor.update({'system.attributes.hp.temp': temp});
+        }
+        if (remaining > 0) {
+          const overflow = Math.max(0 - Math.floor(max / 2), cur - remaining);
+          await actor.update({'system.attributes.hp.value': overflow});
+        }
+      } else if (action === 'temp') {
+        const amt = parseInt($('.cc-hp-temp-amount').val()) || 1;
+        await actor.update({'system.attributes.hp.temp': (temp || 0) + amt});
+      } else if (action === 'clear-temp') {
+        await actor.update({'system.attributes.hp.temp': 0});
+      } else if (action === 'death-reset') {
+        await actor.unsetFlag(MODULE_ID, 'deathFail').catch(()=>{});
+        await actor.unsetFlag(MODULE_ID, 'deathPass').catch(()=>{});
+      }
+      CombatCompanion.refresh();
+    });
+
+    // Death save dots — +/- buttons
+    $('.cc-death-btn').off('click.cc-death').on('click.cc-death', async function(){
+      const actor=CombatCompanion.actor; if (!actor) return;
+      const type = $(this).data('death-type');
+      const dir = parseInt($(this).data('death-dir')) || 0;
+      const flagKey = type === 'fail' ? 'deathFail' : 'deathPass';
+      let cur = parseInt(actor.getFlag(MODULE_ID, flagKey) || 0) || 0;
+      const nxt = Math.max(0, Math.min(3, cur + dir));
+      await actor.setFlag(MODULE_ID, flagKey, nxt);
+      CombatCompanion.refresh();
     });
 
     // Resources

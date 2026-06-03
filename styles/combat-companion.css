@@ -508,3 +508,137 @@
 .app[id^="cc-popout"].cc-minimized .window-header {
   border-bottom: none;
 }
+
+/* ─── HP Controls ──────────────────────────────────────────────── */
+.cc-hp-controls {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cc-hp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cc-hp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border: 1px solid #2c3e50;
+  border-radius: 4px;
+  background: #111522;
+  color: #ccd6e4;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.cc-hp-btn:hover { border-color: #f39c12; background: #0d1320; }
+.cc-hp-heal { color: #10b981; }
+.cc-hp-heal:hover { border-color: #10b981; color: #34d399; }
+.cc-hp-dmg { color: #ef4444; }
+.cc-hp-dmg:hover { border-color: #ef4444; color: #f87171; }
+.cc-hp-temp { color: #06b6d4; }
+.cc-hp-temp:hover { border-color: #06b6d4; color: #22d3ee; }
+.cc-hp-clear-temp { color: #ef4444; width: 26px; height: 22px; }
+.cc-hp-clear-temp:hover { border-color: #ef4444; color: #f87171; }
+.cc-death-reset { color: #8899aa; width: 26px; height: 22px; }
+.cc-death-reset:hover { border-color: #f59e0b; color: #f59e0b; }
+.cc-hp-amount,
+.cc-hp-temp-amount {
+  width: 50px;
+  padding: 3px 6px;
+  background: #111522;
+  border: 1px solid #2c3e50;
+  border-radius: 4px;
+  color: #fff;
+  text-align: center;
+  font-size: 13px;
+  outline: none;
+}
+.cc-hp-amount:focus,
+.cc-hp-temp-amount:focus { border-color: #f39c12; }
+.cc-hp-label {
+  font-size: 11px;
+  color: #667788;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+
+/* ─── Death Save Box ───────────────────────────────────────────── */
+.cc-death-box {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #2c3e50;
+  border-radius: 6px;
+  background: #151a25;
+}
+.cc-death-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.cc-death-dying .cc-death-header { color: #f59e0b; }
+.cc-death-stable .cc-death-header { color: #10b981; }
+.cc-death-dead .cc-death-header { color: #ef4444; }
+.cc-death-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cc-death-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cc-death-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  width: 42px;
+  color: #8899aa;
+}
+.cc-death-dots {
+  display: flex;
+  gap: 5px;
+  flex: 1;
+}
+.cc-death-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2c3e50;
+  transition: background 0.2s;
+}
+.cc-death-dot.cc-death-fail.cc-death-filled {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+.cc-death-dot.cc-death-pass.cc-death-filled {
+  background: #10b981;
+  border-color: #10b981;
+}
+.cc-death-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #2c3e50;
+  border-radius: 4px;
+  background: #111522;
+  color: #8899aa;
+  cursor: pointer;
+  font-size: 10px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.cc-death-btn:hover { border-color: #f39c12; color: #f39c12; background: #0d1320; }
