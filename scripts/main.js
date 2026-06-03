@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.6`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.5.7`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -25,6 +25,8 @@ Hooks.on('ready', () => {
     if (game.settings.get(MODULE_ID, 'hudOpen'))    CombatCompanion.open();
     if (game.settings.get(MODULE_ID, 'popoutOpen')) CombatCompanion.openPopout();
   } catch (e) { console.warn('[Combat Companion] ready error:', e); }
+  // Inject main menu toggle button
+  setTimeout(() => CombatCompanion._injectMenuButton(), 200);
 });
 
 /* ─── Token HUD button (v12–v14 compatible) ─────────────────────── */
@@ -159,17 +161,49 @@ class CombatCompanion {
     }
     try { await game.settings.set(MODULE_ID, 'hudOpen', true); } catch(e){}
     $el.show();
+    $('#cc-menu-toggle').addClass('active');
     this.refresh();
   }
 
   static async close() {
     $('#cc-sidebar').hide();
+    $('#cc-menu-toggle').removeClass('active');
     try { await game.settings.set(MODULE_ID, 'hudOpen', false); } catch(e){}
+  }
+
+  /* ── Toggle sidebar ────────────────────────────────────────────── */
+  static toggle() {
+    const $el = $('#cc-sidebar');
+    if ($el.length && $el.is(':visible')) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+
+  /* ── Inject main menu toggle button ────────────────────────────── */
+  static _injectMenuButton() {
+    if (document.getElementById('cc-menu-toggle')) return;
+    // Find the header controls area — Foundry v14 stores it in #controls
+    const $target = $('#controls .scene-controls') || $('#controls');
+    if (!$target.length) {
+      // Fallback: try ui-top navigation
+      const $fallback = $('#ui-top');
+      if (!$fallback.length) return;
+      const btn = $(`<div id="cc-menu-toggle" class="cc-menu-btn scene-control" title="Toggle Combat Companion" data-tooltip="Combat Companion"><i class="fas fa-swords"></i></div>`);
+      btn.on('click', () => CombatCompanion.toggle());
+      $fallback.find('.flexrow').length ? $fallback.find('.flexrow').append(btn) : $fallback.append(btn);
+      return;
+    }
+    const btn = $(`<div id="cc-menu-toggle" class="cc-menu-btn scene-control" title="Toggle Combat Companion" data-tooltip="Combat Companion"><i class="fas fa-swords"></i></div>`);
+    btn.on('click', () => CombatCompanion.toggle());
+    $target.prepend(btn);
   }
 
   /* ── Open popout window ────────────────────────────────────────── */
   static async openPopout() {
     $('#cc-sidebar').hide();
+    $('#cc-menu-toggle').addClass('active');
     if (this._instance) { this._instance.render(true); return; }
     this._instance = new CombatCompanionPopout();
     this._instance.render(true);
@@ -1115,7 +1149,7 @@ class CombatCompanionPopout extends Application {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: 'cc-popout', title: 'Combat Companion', template: 'modules/combat-companion/sidebar.html',
-      width: 420, height: 680, resizable: true
+      width: 420, height: 680, resizable: true, minimizable: true
     });
   }
   async getData() { return {}; }
@@ -1125,10 +1159,29 @@ class CombatCompanionPopout extends Application {
     const pos=game.settings.get(MODULE_ID,'popoutPosition');
     const el=this.element instanceof HTMLElement?this.element:this.element[0];
     if (el && pos) { el.style.top=`${pos.top}px`; el.style.left=`${pos.left}px`; }
+    // Bind minimize toggle — click the header to collapse/expand
+    const $header = $root.find('.window-header');
+    if ($header.length) {
+      $header.off('click.cc-minimize').on('click.cc-minimize', (e) => {
+        if ($(e.target).closest('.header-button,.close').length) return;
+        const $win = $root.closest('.app') || $root.parent();
+        $win.toggleClass('cc-minimized');
+        if ($win.hasClass('cc-minimized')) {
+          // Save current height and shrink to just header
+          $win.data('cc-full-height', $win.outerHeight());
+          $win.css('height', $win.find('.window-header').outerHeight() + 'px');
+        } else {
+          // Restore full height
+          const fullH = $win.data('cc-full-height') || 680;
+          $win.css('height', fullH + 'px');
+        }
+      });
+    }
     setTimeout(()=>CombatCompanion.refresh(), 50);
   }
   async close(options={}) {
     try { await game.settings.set(MODULE_ID,'popoutOpen',false); } catch(e){}
+    $('#cc-menu-toggle').removeClass('active');
     return super.close(options);
   }
 }

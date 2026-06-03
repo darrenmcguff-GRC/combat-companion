@@ -470,3 +470,41 @@
 .cc-desc-body::-webkit-scrollbar { width: 5px; }
 .cc-desc-body::-webkit-scrollbar-track { background: transparent; }
 .cc-desc-body::-webkit-scrollbar-thumb { background: #2c3e50; border-radius: 3px; }
+.cc-desc-body::-webkit-scrollbar-thumb:hover { background: #3a4a60; }
+
+/* ─── Main menu toggle button ──────────────────────────────────── */
+#cc-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  color: #8899aa;
+  font-size: 16px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+#cc-menu-toggle:hover {
+  color: #f39c12;
+  background: rgba(243, 156, 18, 0.08);
+  border-color: #f39c12;
+}
+#cc-menu-toggle.active {
+  color: #f39c12;
+  background: rgba(243, 156, 18, 0.12);
+}
+
+/* ─── Popout minimized state ────────────────────────────────────── */
+#cc-popout.cc-minimized,
+.app[id^="cc-popout"].cc-minimized {
+  overflow: hidden;
+}
+#cc-popout.cc-minimized .window-content,
+.app[id^="cc-popout"].cc-minimized .window-content {
+  display: none;
+}
+.app[id^="cc-popout"].cc-minimized .window-header {
+  border-bottom: none;
+}
