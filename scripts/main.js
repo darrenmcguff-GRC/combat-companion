@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.5.8`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.6.0`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -37,7 +37,7 @@ Hooks.on('renderTokenHUD', (hud, html, token) => {
     let target = $html.find('.col.left');
     if (!target.length) target = $html.find('[class*="left"]');
     if (!target.length) target = $html;
-    const btn = $('<div class="control-icon" title="Open Combat Companion"><i class="fas fa-swords"></i></div>');
+    const btn = $('<div class="control-icon" title="Open Combat Companion" data-tooltip="Combat Companion"><i class="fas fa-swords"></i></div>');
     btn.on('click', () => { ui.notifications?.info?.('Opening Combat Companion…'); CombatCompanion.open(); });
     if (target.hasClass('col') || target.hasClass('left')) target.append(btn);
     else { const row=$html.find('.col').first()||$html; row.append(btn); }
@@ -282,7 +282,9 @@ class CombatCompanion {
       deathFails = parseInt(actor.getFlag(MODULE_ID, 'deathFail') || 0) || 0;
       deathPasses = parseInt(actor.getFlag(MODULE_ID, 'deathPass') || 0) || 0;
     } catch(e){}
-    const isDying = hpCurrent <= 0 && (actor.type === 'character' || actor.type === 'npc');
+    // Negative HP: dying at < 0, massive death at <= -max
+    const isDying = hpCurrent < 0 && hpCurrent > -hpMax && (actor.type === 'character' || actor.type === 'npc');
+    const massiveDeath = hpCurrent <= -hpMax && hpMax > 0;
 
     // Initiative
     let initVal = 0;
@@ -335,12 +337,16 @@ class CombatCompanion {
     const resources = [];
     try { for (const r of Object.values(sys.resources||{})) { if (r && (r.max??0)>0) resources.push(r); } } catch(e){}
 
-    // Actions: track reaction
+    // Actions: track action, bonus action, reaction from dnd5e v4 uses.actions
+    let actionAvailable = true;
+    let bonusAvailable = true;
     let reactionAvailable = true;
     try {
       const u = actor.system?.uses?.actions;
-      if (typeof u === 'object' && typeof u.reaction === 'number') {
-        reactionAvailable = u.reaction > 0;
+      if (typeof u === 'object') {
+        actionAvailable = typeof u.action === 'number' ? u.action > 0 : true;
+        bonusAvailable = typeof u.bonus === 'number' ? u.bonus > 0 : true;
+        reactionAvailable = typeof u.reaction === 'number' ? u.reaction > 0 : true;
       }
       // Check for reaction-spent flags in active effects
       if (reactionAvailable && actor.effects?.length) {
@@ -448,11 +454,11 @@ class CombatCompanion {
       name:actor.name||'Unknown', ac:acVal,
       hp:{current:hpCurrent, max:hpMax, temp:hpTemp, tempmax:hpTempmax},
       prof:profBonus, conditions, concentration, initiative:initVal,
-      reactionAvailable, weapons, spells, features, spellSlots, resources, savingThrows,
+      reactionAvailable, actionAvailable, bonusAvailable, weapons, spells, features, spellSlots, resources, savingThrows,
       abilities, skills, reactionItems,
       isNPC:actor.type==='npc',
       labels:actor.labels||{},
-      deathFails, deathPasses, isDying
+      deathFails, deathPasses, isDying, massiveDeath
     };
   }
 
@@ -483,7 +489,7 @@ class CombatCompanion {
   static _renderAll(data) {
     const sections = [
       this._actorCard(data),
-      this._reactionBox(data),
+      this._actionEconomyBox(data),
       this._skillsBox(data),
       this._savingThrowsBox(data),
       this._conditionsBox(data),
@@ -506,7 +512,7 @@ class CombatCompanion {
     const hpCurTotal = d.hp.current + (d.hp.temp||0);
     const pct = hpMaxTotal>0 ? Math.max(0,Math.min(100,(hpCurTotal/hpMaxTotal)*100)) : 0;
     const col = pct>50?'#10b981':pct>25?'#f59e0b':'#f43f5e';
-    const isDead = d.hp.current <= 0;
+    const isDead = d.hp.current <= 0 && !d.isDying && !d.massiveDeath;
     const hpRow = d.hp.temp
       ? `<span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span><span class="cc-temp">+${d.hp.temp} temp</span>`
       : `<span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span>`;
@@ -554,11 +560,13 @@ class CombatCompanion {
     ).join('');
     const stable = d.deathPasses >= 3;
     const dead = d.deathFails >= 3 || d.hp.current < 0;
+    const massive = d.massiveDeath;
     let statusText = '';
     let statusClass = '';
-    if (stable) { statusText = '✅ Stable'; statusClass = 'cc-death-stable'; }
+    if (massive) { statusText = '💀 MASSIVE DEATH'; statusClass = 'cc-death-dead'; }
+    else if (stable) { statusText = '✅ Stable'; statusClass = 'cc-death-stable'; }
     else if (dead) { statusText = '💀 Dead'; statusClass = 'cc-death-dead'; }
-    else { statusText = '⬇️ Dying'; statusClass = 'cc-death-dying'; }
+    else { statusText = d.hp.current < 0 ? '⬇️ Dying (Neg HP)' : '⬇️ Dying'; statusClass = 'cc-death-dying'; }
     return `
       <div class="cc-death-box ${statusClass}">
         <div class="cc-death-header">
@@ -582,39 +590,25 @@ class CombatCompanion {
       </div>`;
   }
 
-  static _reactionBox(d) {
-    const avail = d.reactionAvailable;
-    const cls = avail ? 'cc-reaction-avail' : 'cc-reaction-spent';
-    const text = avail ? '🛡️ Reaction Available' : '🛡️⛔ Reaction Used';
-    const items = d.reactionItems || [];
-    const itemList = items.length
-      ? `<div class="cc-react-items">${items.map(it => {
-          const actType = (it.system?.activation?.type || '').toLowerCase();
-          let badge = '';
-          if (actType==='action') badge = '<span class="cc-badge act">A</span>';
-          else if (actType==='bonus') badge = '<span class="cc-badge bns">B</span>';
-          else if (actType==='reaction' || actType.includes('reaction')) badge = '<span class="cc-badge rct">R</span>';
-          else badge = '';
-          let uses = it.system?.uses;
-          let usesText = '';
-          if (uses && uses.max > 0) { usesText = ` (${uses.value ?? uses.max}/${uses.max})`; }
-          else if (it.system?.recovery?.length && it.system.recovery.some(r=> r.period)) {
-            const r = it.system.recovery[0];
-            const periodMap = {'sr':'short rest','lr':'long rest','day':'daily','dawn':'dawn','dusk':'dusk'};
-            usesText = ' (' + (periodMap[r.period] || r.period) + ')';
-          }
-          return `<button class="cc-item-btn cc-react-item" data-item-id="${it.id}" data-type="${it.type}">
-            <img src="${it.img||'icons/svg/mystery-man.svg'}" loading="lazy">
-            <span>${it.name}</span>
-            <div class="cc-badges">${badge}<small>${usesText}</small></div>
-          </button>`;
-        }).join('')}</div>`
-      : '<em class="cc-muted">No reaction abilities</em>';
-    return this._wrap('Reaction', `
-      <button class="cc-reaction-btn ${cls}" data-type="reaction">
-        ${text}
-      </button>
-      ${itemList}`);
+  static _actionEconomyBox(d) {
+    const aAvail = d.actionAvailable;
+    const bAvail = d.bonusAvailable;
+    const rAvail = d.reactionAvailable;
+    return this._wrap('Actions', `
+      <div class="cc-action-row">
+        <button class="cc-action-btn ${aAvail ? 'cc-act-avail' : 'cc-act-spent'}" data-action-type="action">
+          <span class="cc-act-label">Action</span>
+          <span class="cc-act-icon">${aAvail ? '⚔️' : '⛔'}</span>
+        </button>
+        <button class="cc-action-btn ${bAvail ? 'cc-act-avail' : 'cc-act-spent'}" data-action-type="bonus">
+          <span class="cc-act-label">Bonus</span>
+          <span class="cc-act-icon">${bAvail ? '💨' : '⛔'}</span>
+        </button>
+        <button class="cc-action-btn ${rAvail ? 'cc-act-avail' : 'cc-act-spent'}" data-action-type="reaction">
+          <span class="cc-act-label">Reaction</span>
+          <span class="cc-act-icon">${rAvail ? '🛡️' : '⛔'}</span>
+        </button>
+      </div>`);
   }
 
   /* ─── Skills ─────────────────────────────────────────────────── */
@@ -1051,6 +1045,22 @@ class CombatCompanion {
       if (sys.range?.value) properties.push(`Range: ${sys.range.value} ft`);
       if (sys.activation?.cost) properties.push(`Cast: ${sys.activation.cost} ${sys.activation.type || ''}`);
     }
+    if (type === 'feat') {
+      const uses = sys.uses;
+      if (uses && uses.max > 0) {
+        properties.push(`Uses: ${uses.value ?? uses.max}/${uses.max}`);
+      }
+      if (sys.recovery?.length && sys.recovery.some(r => r.period)) {
+        const r = sys.recovery[0];
+        const periodMap = {'sr':'short rest','lr':'long rest','day':'daily','dawn':'dawn','dusk':'dusk'};
+        properties.push('Recharge: ' + (periodMap[r.period] || r.period));
+      }
+      if (sys.activation?.type) {
+        const actType = sys.activation.type;
+        const cost = sys.activation.cost || '';
+        properties.push(`Action: ${cost ? cost + ' ' : ''}${actType}`);
+      }
+    }
     if (sys.activation?.type) {
       const actType = sys.activation.type;
       const cost = sys.activation.cost || '';
@@ -1184,7 +1194,13 @@ class CombatCompanion {
       let temp = hp.temp ?? 0;
       if (action === 'heal') {
         const amt = parseInt($('.cc-hp-amount').val()) || 1;
-        await actor.update({'system.attributes.hp.value': Math.min(max, cur + amt)});
+        const newHP = Math.min(max, cur + amt);
+        await actor.update({'system.attributes.hp.value': newHP});
+        // Reset death saves when healed above 0
+        if (newHP > 0) {
+          await actor.unsetFlag(MODULE_ID, 'deathFail').catch(()=>{});
+          await actor.unsetFlag(MODULE_ID, 'deathPass').catch(()=>{});
+        }
       } else if (action === 'damage') {
         const amt = parseInt($('.cc-hp-amount').val()) || 1;
         let remaining = amt;
@@ -1196,9 +1212,15 @@ class CombatCompanion {
           await actor.update({'system.attributes.hp.temp': temp});
         }
         if (remaining > 0) {
-          const overflow = Math.max(0 - Math.floor(max / 2), cur - remaining);
-          await actor.update({'system.attributes.hp.value': overflow});
+          const newHP = cur - remaining;
+          await actor.update({'system.attributes.hp.value': newHP});
+          // Mass damage: instant death — clear death saves
+          if (newHP <= -max && max > 0) {
+            await actor.unsetFlag(MODULE_ID, 'deathFail').catch(()=>{});
+            await actor.unsetFlag(MODULE_ID, 'deathPass').catch(()=>{});
+          }
         }
+        // Also clear death saves when healed back to 0+ (temp HP only, no direct heal)
       } else if (action === 'temp') {
         const amt = parseInt($('.cc-hp-temp-amount').val()) || 1;
         await actor.update({'system.attributes.hp.temp': (temp || 0) + amt});
@@ -1232,16 +1254,19 @@ class CombatCompanion {
       ui.notifications?.warn?.('Could not map resource.');
     });
 
-    // Reaction toggle
-    $('.cc-reaction-btn').off('click.cc-react').on('click.cc-react', async function(){
+    // Action economy toggle (action / bonus action / reaction)
+    $('.cc-action-btn').off('click.cc-act').on('click.cc-act', async function(){
       const actor = CombatCompanion.actor;
       if (!actor) return;
+      const type = $(this).data('action-type');
       try {
         if (actor.system?.uses?.actions) {
           const cur = actor.system.uses.actions;
-          const react = !cur.reaction || cur.reaction <= 0 ? 1 : 0;
-          await actor.update({'system.uses.actions.reaction': react});
-        } else {
+          const current = typeof cur[type] === 'number' ? cur[type] : 1;
+          const next = current <= 0 ? 1 : 0;
+          await actor.update({[`system.uses.actions.${type}`]: next});
+        } else if (type === 'reaction') {
+          // Legacy flag-based reaction tracking
           const lastUsed = actor.getFlag(MODULE_ID, 'reactionUsedRound');
           if (lastUsed && game.combat && game.combat.started && game.combat.round === lastUsed) {
             await actor.unsetFlag(MODULE_ID, 'reactionUsedRound');
@@ -1254,7 +1279,7 @@ class CombatCompanion {
           }
         }
         CombatCompanion.refresh();
-      } catch(e) { console.warn('[Combat Companion] toggle failed:',e); }
+      } catch(e) { console.warn('[Combat Companion] action toggle failed:',e); }
     });
 
     // Stats — click to roll ability check and save
