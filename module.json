@@ -2,7 +2,7 @@
   "id": "combat-companion",
   "title": "Combat Companion",
   "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.5.8: HP controls (heal/damage/temp), death save tracking with 3 fail + 3 pass dots.",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "authors": [
     {
       "name": "Steve",

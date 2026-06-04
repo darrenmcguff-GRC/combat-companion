@@ -735,41 +735,69 @@ class CombatCompanion {
 
   static _weaponStats(w) {
     try {
-      const s = w.system||{}; let atk=null;
-      // dnd5e v4 removed getAttackToHit — skip deprecated path entirely
-      if (atk===null||atk===undefined) {
-        atk = s.attack?.bonus ?? s.attackBonus ?? null;
-        if ((atk===null||atk===undefined) && w.actor?.system) {
-          const prof=w.actor.system.attributes?.prof??0;
-          const ability=s.ability??'str';
-          const abiMod=w.actor.system.abilities?.[ability]?.mod??0;
-          const magic=typeof s.magicalBonus==='number'?s.magicalBonus:0;
-          const profMult=typeof s.proficient==='object'?(s.proficient?.multiplier??0):s.proficient?1:0;
-          atk = Math.round((prof*profMult)+abiMod+magic);
+      const s = w.system||{};
+      const actor = w.actor;
+      // ── Attack bonus: compute from prof + ability + flat bonuses ──
+      let atk = 0;
+      if (actor?.system) {
+        const prof = actor.system.attributes?.prof ?? 0;
+        const ability = s.ability ?? 'str';
+        // For finesse weapons, use the higher of str or dex
+        const props = s.properties || {};
+        const isFinesse = props.fin || props.finesse || (Array.isArray(s.properties) && s.properties.includes('fin'));
+        let abiMod = actor.system.abilities?.[ability]?.mod ?? 0;
+        if (isFinesse) {
+          const dexMod = actor.system.abilities?.dex?.mod ?? 0;
+          abiMod = Math.max(abiMod, dexMod);
         }
+        const magic = typeof s.magicalBonus === 'number' ? s.magicalBonus : 0;
+        const flatBonus = typeof s.attackBonus === 'number' ? s.attackBonus : 0;
+        // prof multiplier: v4 uses boolean (true=1) or numeric (0, 0.5, 1, 2)
+        let profMult = 0;
+        if (typeof s.proficient === 'number') profMult = s.proficient;
+        else if (s.proficient === true) profMult = 1;
+        atk = Math.round((prof * profMult) + abiMod + magic + flatBonus);
       }
-      atk = atk ?? 0;
+      // ── Damage: try v4 activities first, then labels, then legacy ──
       let dmg = null;
-      if (w.labels?.damage) dmg=String(w.labels.damage);
-      if (!dmg && s.damage?.formula) dmg=s.damage.formula;
-      if (!dmg && s.formula) dmg=s.formula;
-      if (!dmg && s.attack?.parts?.length) dmg=s.attack.parts.map(p=>Array.isArray(p)?p[0]:String(p)).filter(Boolean).join(' + ');
-      if (!dmg && s.damage?.parts?.length) dmg=s.damage.parts.map(p=>Array.isArray(p)?p[0]:String(p)).filter(Boolean).join(' + ');
-      if (!dmg && s.damage?.base) dmg=this._fmtDie(s.damage.base,w);
-      if (!dmg && s.damage?.versatile) dmg=this._fmtDie(s.damage.versatile,w);
+      // v4: activities.contents[0].damage.parts
+      try {
+        const activities = s.activities?.contents || Object.values(s.activities || {});
+        const act = activities?.[0];
+        if (act?.damage?.parts?.length) {
+          const parts = act.damage.parts;
+          dmg = parts.map(p => {
+            const num = p.number ?? 1;
+            const faces = p.faces ?? p.denomination ?? 0;
+            const bonus = p.bonus ?? 0;
+            let str = `${num}d${faces}`;
+            if (bonus) str += bonus > 0 ? ` + ${bonus}` : ` - ${Math.abs(bonus)}`;
+            return str;
+          }).filter(Boolean).join(' + ');
+        }
+      } catch(e){}
+      // Fallback: labels (dnd5e computed)
+      if (!dmg && w.labels?.damage) dmg = String(w.labels.damage);
+      // Fallback: legacy damage fields
+      if (!dmg && s.damage?.formula) dmg = s.damage.formula;
+      if (!dmg && s.formula) dmg = s.formula;
+      if (!dmg && s.attack?.parts?.length) dmg = s.attack.parts.map(p=>Array.isArray(p)?p[0]:String(p)).filter(Boolean).join(' + ');
+      if (!dmg && s.damage?.parts?.length) dmg = s.damage.parts.map(p=>Array.isArray(p)?p[0]:String(p)).filter(Boolean).join(' + ');
+      if (!dmg && s.damage?.base) dmg = this._fmtDie(s.damage.base, w);
+      if (!dmg && s.damage?.versatile) dmg = this._fmtDie(s.damage.versatile, w);
       if (!dmg && s.damage) {
-        const flat=Object.values(foundry.utils.flattenObject(s.damage));
+        const flat = Object.values(foundry.utils.flattenObject(s.damage));
         for (const v of flat) { if (typeof v==='string'&&v.match(/\d+d\d+/)){dmg=v;break;} }
       }
       if (!dmg && s.damage?.base?.number&&(s.damage.base.faces||s.damage.base.denomination)) {
-        dmg=`${s.damage.base.number}d${s.damage.base.faces||s.damage.base.denomination}`;
+        dmg = `${s.damage.base.number}d${s.damage.base.faces||s.damage.base.denomination}`;
       }
       if (typeof dmg==='string' && dmg.match(/[@$][a-zA-Z_]/)) {
         try {
-          const sourceData=(w.getRollData?w.getRollData():null)||(w.actor?.getRollData?w.actor.getRollData():null)||null;
+          const sourceData=(w.getRollData?w.getRollData():null)||(actor?.getRollData?actor.getRollData():null)||null;
           if (sourceData) {
             let resolved=dmg;
-            const refs=dmg.match(/[@$][a-zA-Z_][\w.]*/g)||[];
+            const refs = dmg.match(/[@$][a-zA-Z_][\w.]*/g)||[];
             for (const ref of refs) { const path=ref.slice(1).split('.'); let val=sourceData; for (const p of path){ val=val?.[p]; } if (typeof val==='number'&&!Number.isNaN(val)){ resolved=resolved.split(ref).join(String(val)); } }
             if (resolved!==dmg) dmg=resolved;
           }
@@ -829,34 +857,53 @@ class CombatCompanion {
       if (actType==='action') badge = '<span class="cc-badge act">A</span>';
       else if (actType==='bonus') badge = '<span class="cc-badge bns">B</span>';
       else if (actType==='reaction' || actType.includes('reaction')) badge = '<span class="cc-badge rct">R</span>';
-      // Save / roll info
+      // Save / roll info — show actual numbers
       let rollInfo = '';
       try {
         const activities = s.system?.activities?.contents || Object.values(s.system?.activities || {});
         const act = activities?.[0];
         if (act) {
-          // dnd5e v4: damage lives on act.damage.parts (array of {number,faces,denomination,bonus})
-          // v3 compat: act.damage?.parts as flat strings, act.damage as strings
-          const dmgParts = act.damage?.parts || [];
-          const hasDamage = dmgParts.length > 0 || typeof act.damage?.formula === 'string';
+          // Spell attack bonus
+          if (act.attack?.type === 'ranged' || act.attack?.type === 'melee' || act.attack?.type === 'rangedtouch' || act.attack?.type === 'meleetouch' || act.attack === true) {
+            const spellAtk = s.actor?.system?.attributes?.spellattack ?? 0;
+            const sign = spellAtk >= 0 ? '+' : '';
+            rollInfo = `+${sign}${spellAtk} hit`;
+          }
+          // Save DC
           const save = act.save?.ability || act.save || act.ability;
-          const dc = act.save?.dc || (s.actor?.system?.attributes?.spelldc);
-          if (save) {
+          if (save && !rollInfo) {
+            const dc = act.save?.dc || s.actor?.system?.attributes?.spelldc || '?';
             const abil = typeof save === 'string' ? save : (save.ability || save);
-            rollInfo = `DC${dc || '?'} ${String(abil).slice(0,3).toUpperCase()} save`;
-          } else if (act.attack) {
-            rollInfo = 'Attack roll';
-          } else if (hasDamage) {
-            rollInfo = 'Attack roll';
+            rollInfo = `DC${dc} ${String(abil).slice(0,3).toUpperCase()}`;
+          }
+          // Damage
+          const dmgParts = act.damage?.parts || [];
+          if (dmgParts.length > 0) {
+            const dmgStr = dmgParts.map(p => {
+              const num = p.number ?? 1;
+              const faces = p.faces ?? p.denomination ?? 0;
+              const bonus = p.bonus ?? 0;
+              let str = `${num}d${faces}`;
+              if (bonus) str += bonus > 0 ? `+${bonus}` : `${bonus}`;
+              return str;
+            }).filter(Boolean).join(' + ');
+            if (dmgStr) rollInfo = rollInfo ? `${rollInfo} · ${dmgStr}` : dmgStr;
+          } else if (typeof act.damage?.formula === 'string' && act.damage.formula) {
+            rollInfo = rollInfo ? `${rollInfo} · ${act.damage.formula}` : act.damage.formula;
           }
         }
         // Fallback: look at spell description for save/attack mentions
         if (!rollInfo && s.system?.description?.value) {
           const desc = s.system.description.value.toLowerCase();
-          const saveMatch = desc.match(/dc\s*\d+\s*(?:(\w+)\s+)?saving/);
-          if (saveMatch && saveMatch[1]) rollInfo = `Save (${saveMatch[1].slice(0,3).toUpperCase()})`;
-          else if (desc.includes('saving throw') || desc.includes('saving')) rollInfo = 'Save';
-          else if (desc.includes('attack roll') || desc.includes('spell attack')) rollInfo = 'Attack roll';
+          const saveMatch = desc.match(/dc\s*(\d+)\s*(?:(?:\w+)\s+)?saving/);
+          if (saveMatch) {
+            const dc = s.actor?.system?.attributes?.spelldc || saveMatch[1];
+            rollInfo = `DC${dc} save`;
+          } else if (desc.includes('attack roll') || desc.includes('spell attack')) {
+            const spellAtk = s.actor?.system?.attributes?.spellattack ?? 0;
+            const sign = spellAtk >= 0 ? '+' : '';
+            rollInfo = `+${sign}${spellAtk} hit`;
+          }
         }
       } catch(e){}
       return `<button class="cc-item-btn" data-item-id="${s.id}" data-type="spell">
@@ -925,18 +972,81 @@ class CombatCompanion {
     // Build properties string
     const properties = [];
     if (type === 'weapon') {
-      if (sys.attackBonus || sys.attack?.bonus) properties.push(`Attack +${sys.attackBonus ?? sys.attack?.bonus}`);
-      if (sys.damage?.parts?.length || sys.damage?.base) {
-        const dmg = sys.damage?.parts?.map(p => Array.isArray(p) ? p[0] : p).join(' + ') || 
-                    (sys.damage.base ? `${sys.damage.base.number}d${sys.damage.base.faces}` : '');
-        if (dmg) properties.push(`Damage: ${dmg}`);
+      // Use the same calculation as _weaponStats
+      const s = item.system || {};
+      const actor = item.actor;
+      let atk = 0;
+      if (actor?.system) {
+        const prof = actor.system.attributes?.prof ?? 0;
+        const ability = s.ability ?? 'str';
+        const props = s.properties || {};
+        const isFinesse = props.fin || props.finesse || (Array.isArray(s.properties) && s.properties.includes('fin'));
+        let abiMod = actor.system.abilities?.[ability]?.mod ?? 0;
+        if (isFinesse) {
+          const dexMod = actor.system.abilities?.dex?.mod ?? 0;
+          abiMod = Math.max(abiMod, dexMod);
+        }
+        const magic = typeof s.magicalBonus === 'number' ? s.magicalBonus : 0;
+        const flatBonus = typeof s.attackBonus === 'number' ? s.attackBonus : 0;
+        let profMult = 0;
+        if (typeof s.proficient === 'number') profMult = s.proficient;
+        else if (s.proficient === true) profMult = 1;
+        atk = Math.round((prof * profMult) + abiMod + magic + flatBonus);
       }
-      if (sys.range?.value) properties.push(`Range: ${sys.range.value} ft`);
+      const sign = atk >= 0 ? '+' : '';
+      properties.push(`Attack +${sign}${atk}`);
+      // Damage from v4 activities
+      let dmgStr = '';
+      try {
+        const activities = s.activities?.contents || Object.values(s.activities || {});
+        const act = activities?.[0];
+        if (act?.damage?.parts?.length) {
+          dmgStr = act.damage.parts.map(p => {
+            const num = p.number ?? 1;
+            const faces = p.faces ?? p.denomination ?? 0;
+            const bonus = p.bonus ?? 0;
+            let str = `${num}d${faces}`;
+            if (bonus) str += bonus > 0 ? `+${bonus}` : `${bonus}`;
+            return str;
+          }).filter(Boolean).join(' + ');
+        }
+      } catch(e){}
+      if (!dmgStr && s.damage?.parts?.length) dmgStr = s.damage.parts.map(p => Array.isArray(p) ? p[0] : p).join(' + ');
+      if (!dmgStr && s.damage?.base) dmgStr = `${s.damage.base.number}d${s.damage.base.faces}`;
+      if (dmgStr) properties.push(`Damage: ${dmgStr}`);
+      if (s.range?.value) properties.push(`Range: ${s.range.value} ft`);
     }
     if (type === 'spell') {
       const lvl = sys.level ?? 0;
       properties.push(lvl === 0 ? 'Cantrip' : `Level ${lvl}`);
       if (sys.school) properties.push(sys.school.label || sys.school);
+      // Spell attack bonus
+      const spellAtk = item.actor?.system?.attributes?.spellattack ?? 0;
+      if (spellAtk) {
+        const sgn = spellAtk >= 0 ? '+' : '';
+        properties.push(`Attack +${sgn}${spellAtk}`);
+      }
+      // Save DC
+      const spellDC = item.actor?.system?.attributes?.spelldc;
+      if (spellDC) properties.push(`DC ${spellDC}`);
+      // Damage from activities
+      let spellDmg = '';
+      try {
+        const activities = sys.activities?.contents || Object.values(sys.activities || {});
+        const act = activities?.[0];
+        if (act?.damage?.parts?.length) {
+          spellDmg = act.damage.parts.map(p => {
+            const num = p.number ?? 1;
+            const faces = p.faces ?? p.denomination ?? 0;
+            const bonus = p.bonus ?? 0;
+            let str = `${num}d${faces}`;
+            if (bonus) str += bonus > 0 ? `+${bonus}` : `${bonus}`;
+            return str;
+          }).filter(Boolean).join(' + ');
+        }
+      } catch(e){}
+      if (!spellDmg && sys.damage?.parts?.length) spellDmg = sys.damage.parts.map(p => Array.isArray(p) ? p[0] : p).join(' + ');
+      if (spellDmg) properties.push(`Damage: ${spellDmg}`);
       if (sys.duration?.value) properties.push(`Duration: ${sys.duration.value} ${sys.duration.units || ''}`);
       if (sys.range?.value) properties.push(`Range: ${sys.range.value} ft`);
       if (sys.activation?.cost) properties.push(`Cast: ${sys.activation.cost} ${sys.activation.type || ''}`);
