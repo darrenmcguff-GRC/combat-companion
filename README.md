@@ -33,6 +33,7 @@ https://raw.githubusercontent.com/darrenmcguff-GRC/combat-companion/main/module.
 
 ## Version History
 
+- **v1.6.2** — Fixed resource notification spam (warning fired on every change); fixed description popup XSS via entity un-escaping (entities now decoded before tag stripping); fixed fallback roll sign bug (negative modifiers lost minus sign in ability/skill/save rolls)
 - **v1.6.1** — Fixed death save gating (now shows for negative HP, not just 0 HP); XSS hardening (all user-controlled strings escaped); fixed double-plus display on spell/weapon attack bonuses; fixed resource label collision; fixed toggle popout state conflict; fixed jQuery fallback dead code
 - **v1.6.0** — Action/Bonus/Reaction trackers (click to spend/restore); negative HP tracking with massive damage auto-death (HP ≤ -max = instant death, no saves); corrected weapon attack/damage and spell display to match character sheet data; added feat properties to right-click popup; fixed HP damage writing negative values
 - **v1.5.9** — Fix weapon attack/damage & spell display to match character sheet data

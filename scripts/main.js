@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.6.1`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.6.2`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -961,11 +961,13 @@ class CombatCompanion {
     // Strip HTML tags for a clean preview, keep basic formatting
     const stripHtml = (html) => {
       if (!html) return '';
+      // First un-escape entities so they don't survive tag stripping
+      let text = html.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
       // Replace common block tags with newlines
-      let text = html.replace(/<\/p>/gi, '\n\n').replace(/<\/li>/gi, '\n').replace(/<\/tr>/gi, '\n').replace(/<\/div>/gi, '\n');
+      text = text.replace(/<\/p>/gi, '\n\n').replace(/<\/li>/gi, '\n').replace(/<\/tr>/gi, '\n').replace(/<\/div>/gi, '\n');
       text = text.replace(/<br\s*\/?>/gi, '\n');
+      // Strip all remaining HTML tags
       text = text.replace(/<[^>]+>/g, '');
-      text = text.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
       text = text.replace(/\n{3,}/g, '\n\n').trim();
       return text;
     };
@@ -1274,9 +1276,12 @@ class CombatCompanion {
           const idx = $inputs.index(this);
           if (idx >= 0 && idx < entries.length) matched = entries[idx][0];
         }
-        if (matched) await actor.update({[`system.resources.${matched}.value`]: val});
+        if (matched) {
+          await actor.update({[`system.resources.${matched}.value`]: val});
+        } else {
+          ui.notifications?.warn?.('Could not map resource.');
+        }
       } catch(e){}
-      ui.notifications?.warn?.('Could not map resource.');
     });
 
     // Action economy toggle (action / bonus action / reaction)
@@ -1327,7 +1332,7 @@ class CombatCompanion {
         if (!a) return;
         const val = a.value ?? 10;
         const mod = Math.floor((val - 10) / 2);
-        const sign = mod >= 0 ? '+' : '';
+        const sign = mod >= 0 ? '+' : '-';
         const label = (a.label || key).toUpperCase();
         const roll = await new Roll(`1d20${sign}${Math.abs(mod)}`).evaluate({async: true});
         await roll.toMessage({
@@ -1370,7 +1375,7 @@ class CombatCompanion {
         const bonus = typeof sk.bonus === 'number' ? sk.bonus : 0;
         const profBonus = actor.system?.attributes?.prof ?? 0;
         const total = abiMod + (profMult * profBonus) + bonus;
-        const sign = total >= 0 ? '+' : '';
+        const sign = total >= 0 ? '+' : '-';
         const label = sk.label || labelMap[key] || key.charAt(0).toUpperCase() + key.slice(1);
         const rollData = actor.getRollData();
         const roll = new Roll(`1d20${sign}${Math.abs(total)}`, rollData);
@@ -1406,7 +1411,7 @@ class CombatCompanion {
         const profMult = typeof a.proficient === 'number' ? a.proficient : 0;
         const profBonus = actor.system?.attributes?.prof ?? 0;
         const total = mod + (profMult * profBonus);
-        const sign = total >= 0 ? '+' : '';
+        const sign = total >= 0 ? '+' : '-';
         const label = a.label || key.charAt(0).toUpperCase() + key.slice(1);
         const rollData = actor.getRollData();
         const roll = new Roll(`1d20${sign}${Math.abs(total)}`, rollData);
