@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.6.0`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.6.1`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -104,6 +104,11 @@ Hooks.on('dnd5e.rollAttack', (item, roll, ammoUpdate) => {
 
 /* ─── Main Class ───────────────────────────────────────────────── */
 class CombatCompanion {
+  /* ── HTML escaping helper ─────────────────────────────────────── */
+  static _esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   static _instance = null;
   static _lastTokenId = null;
   static get actor() {
@@ -174,8 +179,12 @@ class CombatCompanion {
   /* ── Toggle sidebar ────────────────────────────────────────────── */
   static toggle() {
     const $el = $('#cc-sidebar');
+    const popoutOpen = this._instance && !this._instance._minimized;
     if ($el.length && $el.is(':visible')) {
       this.close();
+    } else if (popoutOpen) {
+      // Popout is open — focus it instead of opening sidebar
+      this._instance.render(true);
     } else {
       this.open();
     }
@@ -185,7 +194,8 @@ class CombatCompanion {
   static _injectMenuButton() {
     if (document.getElementById('cc-menu-toggle')) return;
     // Find the header controls area — Foundry v14 stores it in #controls
-    const $target = $('#controls .scene-controls') || $('#controls');
+    let $target = $('#controls .scene-controls');
+    if (!$target.length) $target = $('#controls');
     if (!$target.length) {
       // Fallback: try ui-top navigation
       const $fallback = $('#ui-top');
@@ -482,7 +492,7 @@ class CombatCompanion {
     $('#cc-sidebar .cc-body, #cc-popout .cc-body').html(html);
   }
   static _renderError(msg) {
-    const html = `<div class="cc-empty" style="color:#f43f5e"><i class="fas fa-triangle-exclamation"></i><p>${msg}</p></div>`;
+    const html = `<div class="cc-empty" style="color:#f43f5e"><i class="fas fa-triangle-exclamation"></i><p>${this._esc(msg)}</p></div>`;
     $('#cc-sidebar .cc-body, #cc-popout .cc-body').html(html);
   }
 
@@ -512,13 +522,13 @@ class CombatCompanion {
     const hpCurTotal = d.hp.current + (d.hp.temp||0);
     const pct = hpMaxTotal>0 ? Math.max(0,Math.min(100,(hpCurTotal/hpMaxTotal)*100)) : 0;
     const col = pct>50?'#10b981':pct>25?'#f59e0b':'#f43f5e';
-    const isDead = d.hp.current <= 0 && !d.isDying && !d.massiveDeath;
+    const showDeathSaves = d.isDying || d.massiveDeath || (d.hp.current <= 0 && !d.isDying && !d.massiveDeath);
     const hpRow = d.hp.temp
       ? `<span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span><span class="cc-temp">+${d.hp.temp} temp</span>`
       : `<span class="cc-hp">${hpCurTotal} / ${hpMaxTotal} HP</span>`;
     return this._wrap('Actor', `
       <div class="cc-actor"><img src="${d.img}" alt="" loading="lazy"><div>
-        <strong>${d.name}</strong>
+        <strong>${this._esc(d.name)}</strong>
         <span class="cc-ac"><i class="fas fa-shield-halved"></i> ${d.ac} AC</span>
         <div class="cc-hp-bar"><div style="width:${pct}%;background:${col}"></div></div>
         ${hpRow}
@@ -538,7 +548,7 @@ class CombatCompanion {
           ${d.hp.temp ? `<button class="cc-hp-btn cc-hp-clear-temp" data-hp-action="clear-temp" title="Clear Temp HP"><i class="fas fa-times"></i></button>` : ''}
         </div>
       </div>
-      ${isDead ? this._deathSaveBox(d) : ''}
+      ${showDeathSaves ? this._deathSaveBox(d) : ''}
       <div class="cc-stats-row">${(d.abilities||[]).map(a=>{
         const sign=a.mod>=0?'+':'';
         return `<div class="cc-stat" data-stat="${a.key}" title="${a.label} — click to roll">
@@ -559,14 +569,14 @@ class CombatCompanion {
       `<span class="cc-death-dot cc-death-pass ${i < d.deathPasses ? 'cc-death-filled' : ''}"></span>`
     ).join('');
     const stable = d.deathPasses >= 3;
-    const dead = d.deathFails >= 3 || d.hp.current < 0;
+    const dead = d.deathFails >= 3;
     const massive = d.massiveDeath;
     let statusText = '';
     let statusClass = '';
     if (massive) { statusText = '💀 MASSIVE DEATH'; statusClass = 'cc-death-dead'; }
     else if (stable) { statusText = '✅ Stable'; statusClass = 'cc-death-stable'; }
     else if (dead) { statusText = '💀 Dead'; statusClass = 'cc-death-dead'; }
-    else { statusText = d.hp.current < 0 ? '⬇️ Dying (Neg HP)' : '⬇️ Dying'; statusClass = 'cc-death-dying'; }
+    else { statusText = '⬇️ Dying'; statusClass = 'cc-death-dying'; }
     return `
       <div class="cc-death-box ${statusClass}">
         <div class="cc-death-header">
@@ -646,7 +656,7 @@ class CombatCompanion {
 
   static _conditionsBox(d) {
     const chips = d.conditions.length
-      ? d.conditions.map(c=>`<span class="cc-chip">${c}</span>`).join('')
+      ? d.conditions.map(c=>`<span class="cc-chip">${this._esc(c)}</span>`).join('')
       : '<em class="cc-muted">None</em>';
     return this._wrap('Conditions',
       `${d.concentration?'<span class="cc-chip cc-conc"><i class="fas fa-eye"></i> Concentrating</span>':''}${chips}`);
@@ -692,7 +702,7 @@ class CombatCompanion {
       }
       return `<button class="cc-item-btn" data-item-id="${f.id}" data-type="feat">
         <img src="${f.img||'icons/svg/mystery-man.svg'}" loading="lazy">
-        <span>${f.name}</span>
+        <span>${this._esc(f.name)}</span>
         <div class="cc-badges">${badge}<small>${usesText}</small></div>
       </button>`;
     }).join('');
@@ -717,7 +727,7 @@ class CombatCompanion {
       .join('');
     const list = current.map(w=>`
       <button class="cc-item-btn" data-item-id="${w.id}" data-type="weapon">
-        <img src="${w.img||'icons/svg/mystery-man.svg'}" loading="lazy"><span>${w.name}</span>
+        <img src="${w.img||'icons/svg/mystery-man.svg'}" loading="lazy"><span>${this._esc(w.name)}</span>
         <small>${this._weaponStats(w)}</small>
       </button>`).join('');
     return this._wrap('Weapons', `
@@ -861,7 +871,7 @@ class CombatCompanion {
           if (act.attack?.type === 'ranged' || act.attack?.type === 'melee' || act.attack?.type === 'rangedtouch' || act.attack?.type === 'meleetouch' || act.attack === true) {
             const spellAtk = s.actor?.system?.attributes?.spellattack ?? 0;
             const sign = spellAtk >= 0 ? '+' : '';
-            rollInfo = `+${sign}${spellAtk} hit`;
+            rollInfo = `${sign}${spellAtk} hit`;
           }
           // Save DC
           const save = act.save?.ability || act.save || act.ability;
@@ -896,12 +906,12 @@ class CombatCompanion {
           } else if (desc.includes('attack roll') || desc.includes('spell attack')) {
             const spellAtk = s.actor?.system?.attributes?.spellattack ?? 0;
             const sign = spellAtk >= 0 ? '+' : '';
-            rollInfo = `+${sign}${spellAtk} hit`;
+            rollInfo = `${sign}${spellAtk} hit`;
           }
         }
       } catch(e){}
       return `<button class="cc-item-btn" data-item-id="${s.id}" data-type="spell">
-        <img src="${s.img||'icons/svg/mystery-man.svg'}" loading="lazy"><span>${s.name}</span>
+        <img src="${s.img||'icons/svg/mystery-man.svg'}" loading="lazy"><span>${this._esc(s.name)}</span>
         <div class="cc-badges">${badge}<small>${rollInfo || label}</small></div>
       </button>`;
     }).join('');
@@ -932,7 +942,7 @@ class CombatCompanion {
   static _resourcesBox(d) {
     if (!d.resources.length) return '';
     let idx=0;
-    const list=d.resources.map(r=>`<div class="cc-resource"><span>${r.label||`Resource ${++idx}`}</span>
+    const list=d.resources.map(r=>`<div class="cc-resource"><span>${this._esc(r.label||`Resource ${++idx}`)}</span>
       <input type="number" value="${r.value??0}" data-res-label="${r.label||''}"> / <span>${r.max}</span></div>`).join('');
     return this._wrap('Resources', list);
   }
@@ -988,7 +998,7 @@ class CombatCompanion {
         atk = Math.round((prof * profMult) + abiMod + magic + flatBonus);
       }
       const sign = atk >= 0 ? '+' : '';
-      properties.push(`Attack +${sign}${atk}`);
+      properties.push(`Attack ${sign}${atk}`);
       // Damage from v4 activities
       let dmgStr = '';
       try {
@@ -1018,7 +1028,7 @@ class CombatCompanion {
       const spellAtk = item.actor?.system?.attributes?.spellattack ?? 0;
       if (spellAtk) {
         const sgn = spellAtk >= 0 ? '+' : '';
-        properties.push(`Attack +${sgn}${spellAtk}`);
+        properties.push(`Attack ${sgn}${spellAtk}`);
       }
       // Save DC
       const spellDC = item.actor?.system?.attributes?.spelldc;
@@ -1086,7 +1096,7 @@ class CombatCompanion {
       <div id="cc-desc-popup" class="cc-desc-popup" style="left:${pos.left}px;top:${pos.top}px;">
         <div class="cc-desc-header">
           <img src="${img}" alt="" loading="lazy">
-          <span>${name}</span>
+          <span>${this._esc(name)}</span>
           <i class="fas fa-times cc-desc-close"></i>
         </div>
         ${propsHtml}
@@ -1250,7 +1260,22 @@ class CombatCompanion {
       const actor=CombatCompanion.actor; if (!actor) return;
       const val=parseInt($(this).val())||0;
       const label=$(this).data('res-label');
-      try { for (const [key,r] of Object.entries(actor.system?.resources||{})) { if (r && r.label===label){ await actor.update({[`system.resources.${key}.value`]:val}); return; } } } catch(e){}
+      try {
+        const resources = actor.system?.resources || {};
+        const entries = Object.entries(resources).filter(([k,r]) => r && (r.max ?? 0) > 0);
+        // Match by label first, fall back to index
+        let matched = null;
+        for (const [key, r] of entries) {
+          if (r.label === label) { matched = key; break; }
+        }
+        if (!matched && entries.length > 0) {
+          // Find by position: count how many resources precede this input
+          const $inputs = $('.cc-resource input');
+          const idx = $inputs.index(this);
+          if (idx >= 0 && idx < entries.length) matched = entries[idx][0];
+        }
+        if (matched) await actor.update({[`system.resources.${matched}.value`]: val});
+      } catch(e){}
       ui.notifications?.warn?.('Could not map resource.');
     });
 

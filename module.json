@@ -1,8 +1,8 @@
 {
   "id": "combat-companion",
   "title": "Combat Companion",
-  "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.6.0: Action/Bonus/Reaction trackers, negative HP with massive damage auto-death, corrected weapon/spell stats to match character sheet.",
-  "version": "1.6.0",
+  "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.6.1: Fixed death save gating for negative HP, XSS hardening, double-plus display fix, resource label collision fix.",
+  "version": "1.6.1",
   "authors": [
     {
       "name": "Steve",
