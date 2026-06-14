@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.6.3`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.6.4`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -723,31 +723,36 @@ class CombatCompanion {
 
   static _cap(s) { return s.charAt(0).toUpperCase()+s.slice(1); }
 
+  /* ── Shared weapon attack bonus computation ────────────────────── */
+  static _computeWeaponAttack(item) {
+    const s = item.system || {};
+    const actor = item.actor;
+    if (!actor?.system) return 0;
+    const prof = actor.system.attributes?.prof ?? 0;
+    const ability = s.ability ?? 'str';
+    // For finesse weapons, use the higher of str or dex
+    const props = s.properties || {};
+    const isFinesse = props.fin || props.finesse || (Array.isArray(s.properties) && s.properties.includes('fin'));
+    let abiMod = actor.system.abilities?.[ability]?.mod ?? 0;
+    if (isFinesse) {
+      const dexMod = actor.system.abilities?.dex?.mod ?? 0;
+      abiMod = Math.max(abiMod, dexMod);
+    }
+    const magic = typeof s.magicalBonus === 'number' ? s.magicalBonus : 0;
+    const flatBonus = typeof s.attackBonus === 'number' ? s.attackBonus : 0;
+    // prof multiplier: v4 uses boolean (true=1) or numeric (0, 0.5, 1, 2)
+    let profMult = 0;
+    if (typeof s.proficient === 'number') profMult = s.proficient;
+    else if (s.proficient === true) profMult = 1;
+    return Math.round((prof * profMult) + abiMod + magic + flatBonus);
+  }
+
   static _weaponStats(w) {
     try {
       const s = w.system||{};
       const actor = w.actor;
       // ── Attack bonus: compute from prof + ability + flat bonuses ──
-      let atk = 0;
-      if (actor?.system) {
-        const prof = actor.system.attributes?.prof ?? 0;
-        const ability = s.ability ?? 'str';
-        // For finesse weapons, use the higher of str or dex
-        const props = s.properties || {};
-        const isFinesse = props.fin || props.finesse || (Array.isArray(s.properties) && s.properties.includes('fin'));
-        let abiMod = actor.system.abilities?.[ability]?.mod ?? 0;
-        if (isFinesse) {
-          const dexMod = actor.system.abilities?.dex?.mod ?? 0;
-          abiMod = Math.max(abiMod, dexMod);
-        }
-        const magic = typeof s.magicalBonus === 'number' ? s.magicalBonus : 0;
-        const flatBonus = typeof s.attackBonus === 'number' ? s.attackBonus : 0;
-        // prof multiplier: v4 uses boolean (true=1) or numeric (0, 0.5, 1, 2)
-        let profMult = 0;
-        if (typeof s.proficient === 'number') profMult = s.proficient;
-        else if (s.proficient === true) profMult = 1;
-        atk = Math.round((prof * profMult) + abiMod + magic + flatBonus);
-      }
+      const atk = this._computeWeaponAttack(w);
       // ── Damage: try v4 activities first, then labels, then legacy ──
       let dmg = null;
       // v4: activities.contents[0].damage.parts
@@ -817,7 +822,7 @@ class CombatCompanion {
     if (typeof b==='number') { str+=b>0?` + ${b}`:` - ${Math.abs(b)}`; return str; }
     const bs=String(b).trim(); if (!bs) return str;
     if (bs.match(/^[@$]/)) {
-      try { if (w&&w.getRollData){ const rollData=w.getRollData(); if (rollData){ const resolved=Roll.create(bs,rollData).evaluateSync?.().total??null; if (resolved!==null&&resolved!==0){ str+=resolved>0?` + ${resolved}`:` - ${Math.abs(resolved)}`; return str; } } } } catch(e){}
+      try { if (w&&w.getRollData){ const rollData=w.getRollData(); if (rollData){ const resolved=Roll.create(bs,rollData).evaluateSync?.()?.total??null; if (resolved!==null&&resolved!==0){ str+=resolved>0?` + ${resolved}`:` - ${Math.abs(resolved)}`; return str; } } } } catch(e){}
       return str;
     }
     const bn=Number(bs); if (!isNaN(bn)&&bn!==0){ str+=bn>0?` + ${bn}`:` - ${Math.abs(bn)}`; }
@@ -889,7 +894,7 @@ class CombatCompanion {
         // Fallback: look at spell description for save/attack mentions
         if (!rollInfo && s.system?.description?.value) {
           const desc = s.system.description.value.toLowerCase();
-          const saveMatch = desc.match(/dc\s*(\d+)\s*(?:(?:\w+)\s+)?saving/);
+          const saveMatch = desc.match(/dc\s*(\d+)\s*(?:(?:\w+)\s+)?sav(?:e|ing)/);
           if (saveMatch) {
             const dc = s.actor?.system?.attributes?.spelldc || saveMatch[1];
             rollInfo = `DC${dc} save`;
@@ -966,30 +971,11 @@ class CombatCompanion {
     // Build properties string
     const properties = [];
     if (type === 'weapon') {
-      // Use the same calculation as _weaponStats
-      const s = item.system || {};
-      const actor = item.actor;
-      let atk = 0;
-      if (actor?.system) {
-        const prof = actor.system.attributes?.prof ?? 0;
-        const ability = s.ability ?? 'str';
-        const props = s.properties || {};
-        const isFinesse = props.fin || props.finesse || (Array.isArray(s.properties) && s.properties.includes('fin'));
-        let abiMod = actor.system.abilities?.[ability]?.mod ?? 0;
-        if (isFinesse) {
-          const dexMod = actor.system.abilities?.dex?.mod ?? 0;
-          abiMod = Math.max(abiMod, dexMod);
-        }
-        const magic = typeof s.magicalBonus === 'number' ? s.magicalBonus : 0;
-        const flatBonus = typeof s.attackBonus === 'number' ? s.attackBonus : 0;
-        let profMult = 0;
-        if (typeof s.proficient === 'number') profMult = s.proficient;
-        else if (s.proficient === true) profMult = 1;
-        atk = Math.round((prof * profMult) + abiMod + magic + flatBonus);
-      }
+      const atk = this._computeWeaponAttack(item);
       const sign = atk >= 0 ? '+' : '';
       properties.push(`Attack ${sign}${atk}`);
       // Damage from v4 activities
+      const s = item.system || {};
       let dmgStr = '';
       try {
         const activities = s.activities?.contents || Object.values(s.activities || {});
@@ -1006,7 +992,7 @@ class CombatCompanion {
         }
       } catch(e){}
       if (!dmgStr && s.damage?.parts?.length) dmgStr = s.damage.parts.map(p => Array.isArray(p) ? p[0] : p).join(' + ');
-      if (!dmgStr && s.damage?.base) dmgStr = `${s.damage.base.number}d${s.damage.base.faces}`;
+      if (!dmgStr && s.damage?.base?.number && (s.damage.base.faces || s.damage.base.denomination)) dmgStr = `${s.damage.base.number}d${s.damage.base.faces || s.damage.base.denomination}`;
       if (dmgStr) properties.push(`Damage: ${dmgStr}`);
       if (s.range?.value) properties.push(`Range: ${s.range.value} ft`);
     }
@@ -1014,15 +1000,31 @@ class CombatCompanion {
       const lvl = sys.level ?? 0;
       properties.push(lvl === 0 ? 'Cantrip' : `Level ${lvl}`);
       if (sys.school) properties.push(sys.school.label || sys.school);
-      // Spell attack bonus
-      const spellAtk = item.actor?.system?.attributes?.spellattack ?? 0;
-      if (spellAtk) {
-        const sign = spellAtk >= 0 ? '+' : '';
-        properties.push(`Attack ${sign}${spellAtk}`);
+      // Check for attack vs save — same logic as _spellsBox
+      let hasAttack = false;
+      try {
+        const activities = sys.activities?.contents || Object.values(sys.activities || {});
+        const act = activities?.[0];
+        if (act) {
+          const atkType = act.attack?.type;
+          hasAttack = act.attack === true
+            || (typeof atkType === 'string' && (atkType === 'ranged' || atkType === 'melee' || atkType.includes('touch') || atkType.startsWith('rw') || atkType.startsWith('mw')))
+            || (typeof act.attack === 'object' && act.attack !== null && Object.keys(act.attack).length > 0);
+        }
+      } catch(e){}
+      // Spell attack bonus — only if it's an attack spell
+      if (hasAttack) {
+        const spellAtk = item.actor?.system?.attributes?.spellattack ?? 0;
+        if (spellAtk) {
+          const sign = spellAtk >= 0 ? '+' : '';
+          properties.push(`Attack ${sign}${spellAtk}`);
+        }
       }
-      // Save DC
-      const spellDC = item.actor?.system?.attributes?.spelldc;
-      if (spellDC) properties.push(`DC ${spellDC}`);
+      // Save DC — only if it's a save spell (no attack)
+      if (!hasAttack) {
+        const spellDC = item.actor?.system?.attributes?.spelldc;
+        if (spellDC) properties.push(`DC ${spellDC}`);
+      }
       // Damage from activities
       let spellDmg = '';
       try {
@@ -1039,7 +1041,14 @@ class CombatCompanion {
           }).filter(Boolean).join(' + ');
         }
       } catch(e){}
+      // Fallback: labels (dnd5e computed)
+      if (!spellDmg && item.labels?.damage) spellDmg = String(item.labels.damage);
+      // Fallback: legacy damage fields
+      if (!spellDmg && sys.damage?.formula) spellDmg = sys.damage.formula;
+      if (!spellDmg && sys.formula) spellDmg = sys.formula;
+      if (!spellDmg && sys.attack?.parts?.length) spellDmg = sys.attack.parts.map(p => Array.isArray(p) ? p[0] : String(p)).filter(Boolean).join(' + ');
       if (!spellDmg && sys.damage?.parts?.length) spellDmg = sys.damage.parts.map(p => Array.isArray(p) ? p[0] : p).join(' + ');
+      if (!spellDmg && sys.damage?.base?.number && (sys.damage.base.faces || sys.damage.base.denomination)) spellDmg = `${sys.damage.base.number}d${sys.damage.base.faces || sys.damage.base.denomination}`;
       if (spellDmg) properties.push(`Damage: ${spellDmg}`);
       if (sys.duration?.value) properties.push(`Duration: ${sys.duration.value} ${sys.duration.units || ''}`);
       if (sys.range?.value) properties.push(`Range: ${sys.range.value} ft`);
@@ -1064,7 +1073,8 @@ class CombatCompanion {
     if (sys.activation?.type) {
       const actType = sys.activation.type;
       const cost = sys.activation.cost || '';
-      if (!properties.some(p => p.toLowerCase().includes('cast') && type === 'spell')) {
+      // Skip if already added by type-specific block (feat or spell with cast info)
+      if (!properties.some(p => p.toLowerCase().startsWith('action:') || (p.toLowerCase().includes('cast') && type === 'spell'))) {
         properties.push(`Action: ${cost ? cost + ' ' : ''}${actType}`);
       }
     }
@@ -1120,12 +1130,12 @@ class CombatCompanion {
 
   /* ─── Interactions ─────────────────────────────────────────────── */
   static _bindBoxes() {
-    $('.cc-box header').off('click.cc-box').on('click.cc-box', function(){
+    $('.cc-box header').off('click.cc-box').on('click.cc-box', async function(){
       const box=$(this).closest('.cc-box');
       box.toggleClass('collapsed');
       const collapsed=box.hasClass('collapsed');
       const id=box.attr('id');
-      try { const state=game.settings.get(MODULE_ID,'collapsedBoxes')||{}; state[id]=collapsed; game.settings.set(MODULE_ID,'collapsedBoxes',state); } catch(e){}
+      try { const state=game.settings.get(MODULE_ID,'collapsedBoxes')||{}; state[id]=collapsed; await game.settings.set(MODULE_ID,'collapsedBoxes',state); } catch(e){}
     });
   }
 
@@ -1220,7 +1230,6 @@ class CombatCompanion {
             await actor.unsetFlag(MODULE_ID, 'deathPass').catch(()=>{});
           }
         }
-        // Also clear death saves when healed back to 0+ (temp HP only, no direct heal)
       } else if (action === 'temp') {
         const amt = parseInt($('.cc-hp-temp-amount').val()) || 1;
         await actor.update({'system.attributes.hp.temp': (temp || 0) + amt});
@@ -1294,6 +1303,19 @@ class CombatCompanion {
             const nowManual = actor.getFlag(MODULE_ID, 'reactionSpentManual');
             if (nowManual) { await actor.unsetFlag(MODULE_ID, 'reactionSpentManual'); }
             else { await actor.setFlag(MODULE_ID, 'reactionSpentManual', true); }
+          }
+        } else {
+          // Legacy flag-based action/bonus tracking
+          const flagKey = type === 'action' ? 'actionSpentRound' : 'bonusSpentRound';
+          const lastUsed = actor.getFlag(MODULE_ID, flagKey);
+          if (lastUsed && game.combat && game.combat.started && game.combat.round === lastUsed) {
+            await actor.unsetFlag(MODULE_ID, flagKey);
+          } else if (game.combat && game.combat.started) {
+            await actor.setFlag(MODULE_ID, flagKey, game.combat.round);
+          } else {
+            const nowManual = actor.getFlag(MODULE_ID, flagKey + 'Manual');
+            if (nowManual) { await actor.unsetFlag(MODULE_ID, flagKey + 'Manual'); }
+            else { await actor.setFlag(MODULE_ID, flagKey + 'Manual', true); }
           }
         }
         CombatCompanion.refresh();

@@ -147,38 +147,6 @@
 .cc-hp { font-size: 13px; color: #ccd6e4; }
 .cc-temp { font-size: 11px; color: #06b6d4; margin-left: 6px; }
 
-/* Reaction indicator */
-.cc-reaction-btn {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  width: 100%;
-  padding: 14px 12px;
-  border: 1px solid;
-  border-radius: 6px;
-  font-size: 18px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.cc-reaction-avail {
-  background: #111522;
-  border-color: #10b981;
-  color: #10b981;
-}
-.cc-reaction-avail:hover {
-  background: #0d1a15;
-  border-color: #34d399;
-}
-.cc-reaction-spent {
-  background: #2a1818;
-  border-color: #ef4444;
-  color: #ef4444;
-  cursor: pointer;
-}
-.cc-reaction-spent:hover {
-  background: #3a1e1e;
-  border-color: #fca5a5;
-}
-
 /* Saving throws */
 .cc-save-row {
   display: flex; align-items: center; gap: 8px;
@@ -378,14 +346,6 @@
 .cc-skill-prof-icon { font-size: 10px; color: #667788; width: 16px; text-align: center; }
 .cc-skill-row.cc-skill-prof .cc-skill-prof-icon { color: #f39c12; }
 .cc-skill-row.cc-skill-prof .cc-skill-mod { color: #f39c12; }
-
-/* ─── Reaction items list ──────────────────────────────────────────── */
-.cc-react-items {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
-}
 
 /* ─── Right-click description popup ────────────────────────────────── */
 .cc-desc-popup {
