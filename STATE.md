@@ -5,13 +5,13 @@ Persistent tactical HUD for Foundry VTT (D&D 5e). Replaces the character-sheet t
 
 ---
 
-## Current Version: v1.6.2
+## Current Version: v1.6.3
 
 ### File Layout
 ```
 combat-companion/
 ├── module.json
-├── scripts/main.js         (1465 lines)
+├── scripts/main.js         (~1450 lines)
 ├── styles/combat-companion.css (671 lines)
 ├── sidebar.html            (popout template)
 ├── README.md
@@ -28,7 +28,7 @@ combat-companion/
 
 ---
 
-## Features (v1.6.2)
+## Features (v1.6.3)
 
 | Section | Description |
 |---------|-------------|
@@ -46,7 +46,7 @@ combat-companion/
 | **Initiative** | One-click initiative roll with modifier displayed |
 | **Custom Resources** | Class/race resources with editable values, label-based matching |
 | **Pop-out window** | Detach to a separate resizable, minimizable window |
-| **Draggable & resizable** | Position and size saved per-client |
+| **Draggable & resizable** | Position and size saved per-client (awaited settings save) |
 | **Collapsible sections** | Each box remembers open/closed state |
 | **Token HUD button** | Sword icon in token HUD (left column) |
 | **Main menu toggle** | Sword icon in controls bar, active state styling |
@@ -64,6 +64,7 @@ combat-companion/
 
 ## Recent Changelog
 
+- **v1.6.3** — Removed dead code (reactionItems, shortDesc, labels, isNPC); fixed unawaited settings save (drag/resize position now persists reliably); fixed popout/sidebar state inconsistency (hudOpen set false when popout opens); deduplicated menu button HTML; normalized variable naming (sgn→sign) and damage formatting (spell bonus now matches weapon style); hardened spell attack detection for dnd5e v4.x key-based types (rwak, mwak, etc.)
 - **v1.6.2** — Fixed resource notification spam (warning fired on every change); fixed description popup XSS via entity un-escaping (entities now decoded before tag stripping); fixed fallback roll sign bug (negative modifiers lost minus sign in ability/skill/save rolls)
 - **v1.6.1** — Fixed death save gating (now shows for negative HP, not just 0 HP); XSS hardening (all user-controlled strings escaped); fixed double-plus display on spell/weapon attack bonuses; fixed resource label collision; fixed toggle popout state conflict; fixed jQuery fallback dead code
 - **v1.6.0** — Action/Bonus/Reaction trackers (click to spend/restore); negative HP tracking with massive damage auto-death (HP ≤ -max = instant death, no saves); corrected weapon attack/damage and spell display to match character sheet data; added feat properties to right-click popup; fixed HP damage writing negative values
@@ -98,4 +99,4 @@ combat-companion/
 1. Popout window uses an empty template (`sidebar.html`) — content is injected dynamically. If the popout is closed and reopened too quickly, it can render before DOM is ready. Mitigated by `setTimeout(refresh, 50)`.
 2. `_weaponStats` fallback for damage formula resolution can be noisy in console for non-denominator strings. Usually safe.
 3. `reactionUsedRound` flag persists across combats if the module is unloaded mid-combat. Harmless — will clear on next `updateCombat`.
-4. Code duplication: `_weaponStats()` (lines 740–822) and `_showItemDescription()` (lines 976–1022) both compute weapon attack bonus with ~80 lines of near-identical logic.
+4. Code duplication: `_weaponStats()` and `_showItemDescription()` share ~80 lines of near-identical attack bonus logic.

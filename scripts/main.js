@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.6.2`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.6.3`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -193,6 +193,8 @@ class CombatCompanion {
   /* ── Inject main menu toggle button ────────────────────────────── */
   static _injectMenuButton() {
     if (document.getElementById('cc-menu-toggle')) return;
+    const btn = $(`<div id="cc-menu-toggle" class="cc-menu-btn scene-control" title="Toggle Combat Companion" data-tooltip="Combat Companion"><i class="fas fa-swords"></i></div>`);
+    btn.on('click', () => CombatCompanion.toggle());
     // Find the header controls area — Foundry v14 stores it in #controls
     let $target = $('#controls .scene-controls');
     if (!$target.length) $target = $('#controls');
@@ -200,13 +202,9 @@ class CombatCompanion {
       // Fallback: try ui-top navigation
       const $fallback = $('#ui-top');
       if (!$fallback.length) return;
-      const btn = $(`<div id="cc-menu-toggle" class="cc-menu-btn scene-control" title="Toggle Combat Companion" data-tooltip="Combat Companion"><i class="fas fa-swords"></i></div>`);
-      btn.on('click', () => CombatCompanion.toggle());
       $fallback.find('.flexrow').length ? $fallback.find('.flexrow').append(btn) : $fallback.append(btn);
       return;
     }
-    const btn = $(`<div id="cc-menu-toggle" class="cc-menu-btn scene-control" title="Toggle Combat Companion" data-tooltip="Combat Companion"><i class="fas fa-swords"></i></div>`);
-    btn.on('click', () => CombatCompanion.toggle());
     $target.prepend(btn);
   }
 
@@ -214,6 +212,7 @@ class CombatCompanion {
   static async openPopout() {
     $('#cc-sidebar').hide();
     $('#cc-menu-toggle').addClass('active');
+    try { await game.settings.set(MODULE_ID, 'hudOpen', false); } catch(e){}
     if (this._instance) { this._instance.render(true); return; }
     this._instance = new CombatCompanionPopout();
     this._instance.render(true);
@@ -241,14 +240,14 @@ class CombatCompanion {
       if (isDrag) $el.css({left:Math.max(0,sl+e.clientX-sx), top:Math.max(0,st+e.clientY-sy)});
       if (isResize) $el.css({width:Math.max(300,sw+e.clientX-sx), height:Math.max(300,sh+e.clientY-sy)});
     };
-    const onUp=()=>{
+    const onUp=async ()=>{
       if (isDrag) {
         const o=$el.offset();
-        try { game.settings.set(MODULE_ID, sel==='#cc-sidebar'?'hudPosition':'popoutPosition',
+        try { await game.settings.set(MODULE_ID, sel==='#cc-sidebar'?'hudPosition':'popoutPosition',
           {top:Math.round(o.top), left:Math.round(o.left)}); } catch(e){}
       }
       if (isResize) {
-        try { game.settings.set(MODULE_ID, sel==='#cc-sidebar'?'hudSize':'popoutSize',
+        try { await game.settings.set(MODULE_ID, sel==='#cc-sidebar'?'hudSize':'popoutSize',
           {width:Math.round($el.outerWidth()), height:Math.round($el.outerHeight())}); } catch(e){}
       }
       isDrag=isResize=false;
@@ -448,26 +447,13 @@ class CombatCompanion {
       }
     } catch(e){}
 
-    // Reaction items (from feats + spells that use a reaction)
-    const reactionItems = [];
-    try {
-      for (const it of (actor.items||[])) {
-        const act = it.system?.activation?.type || '';
-        if (act === 'reaction' || act.includes('reaction')) {
-          reactionItems.push(it);
-        }
-      }
-    } catch(e){}
-
     return {
       actor, img:actor.img||actor.prototypeToken?.texture?.src||'icons/svg/mystery-man.svg',
       name:actor.name||'Unknown', ac:acVal,
       hp:{current:hpCurrent, max:hpMax, temp:hpTemp, tempmax:hpTempmax},
       prof:profBonus, conditions, concentration, initiative:initVal,
       reactionAvailable, actionAvailable, bonusAvailable, weapons, spells, features, spellSlots, resources, savingThrows,
-      abilities, skills, reactionItems,
-      isNPC:actor.type==='npc',
-      labels:actor.labels||{},
+      abilities, skills,
       deathFails, deathPasses, isDying, massiveDeath
     };
   }
@@ -828,7 +814,7 @@ class CombatCompanion {
     let str=`${base.number}d${faces}`;
     let b=base.bonus;
     if (b===null||b===undefined||b===''||b===0) return str;
-    if (typeof b==='number') { if (b!==0) str+=b>0?` + ${b}`:` - ${Math.abs(b)}`; return str; }
+    if (typeof b==='number') { str+=b>0?` + ${b}`:` - ${Math.abs(b)}`; return str; }
     const bs=String(b).trim(); if (!bs) return str;
     if (bs.match(/^[@$]/)) {
       try { if (w&&w.getRollData){ const rollData=w.getRollData(); if (rollData){ const resolved=Roll.create(bs,rollData).evaluateSync?.().total??null; if (resolved!==null&&resolved!==0){ str+=resolved>0?` + ${resolved}`:` - ${Math.abs(resolved)}`; return str; } } } } catch(e){}
@@ -867,8 +853,12 @@ class CombatCompanion {
         const activities = s.system?.activities?.contents || Object.values(s.system?.activities || {});
         const act = activities?.[0];
         if (act) {
-          // Spell attack bonus
-          if (act.attack?.type === 'ranged' || act.attack?.type === 'melee' || act.attack?.type === 'rangedtouch' || act.attack?.type === 'meleetouch' || act.attack === true) {
+          // Spell attack bonus — check for any attack configuration
+          const atkType = act.attack?.type;
+          const hasAttack = act.attack === true
+            || (typeof atkType === 'string' && (atkType === 'ranged' || atkType === 'melee' || atkType.includes('touch') || atkType.startsWith('rw') || atkType.startsWith('mw')))
+            || (typeof act.attack === 'object' && act.attack !== null && Object.keys(act.attack).length > 0);
+          if (hasAttack) {
             const spellAtk = s.actor?.system?.attributes?.spellattack ?? 0;
             const sign = spellAtk >= 0 ? '+' : '';
             rollInfo = `${sign}${spellAtk} hit`;
@@ -888,7 +878,7 @@ class CombatCompanion {
               const faces = p.faces ?? p.denomination ?? 0;
               const bonus = p.bonus ?? 0;
               let str = `${num}d${faces}`;
-              if (bonus) str += bonus > 0 ? `+${bonus}` : `${bonus}`;
+              if (bonus) str += bonus > 0 ? ` + ${bonus}` : ` - ${Math.abs(bonus)}`;
               return str;
             }).filter(Boolean).join(' + ');
             if (dmgStr) rollInfo = rollInfo ? `${rollInfo} · ${dmgStr}` : dmgStr;
@@ -941,8 +931,7 @@ class CombatCompanion {
 
   static _resourcesBox(d) {
     if (!d.resources.length) return '';
-    let idx=0;
-    const list=d.resources.map(r=>`<div class="cc-resource"><span>${this._esc(r.label||`Resource ${++idx}`)}</span>
+    const list=d.resources.map((r, i)=>`<div class="cc-resource"><span>${this._esc(r.label||`Resource ${i+1}`)}</span>
       <input type="number" value="${r.value??0}" data-res-label="${r.label||''}"> / <span>${r.max}</span></div>`).join('');
     return this._wrap('Resources', list);
   }
@@ -973,7 +962,6 @@ class CombatCompanion {
     };
 
     const cleanDesc = stripHtml(desc);
-    const shortDesc = cleanDesc.length > 600 ? cleanDesc.substring(0, 597) + '...' : cleanDesc;
 
     // Build properties string
     const properties = [];
@@ -1012,7 +1000,7 @@ class CombatCompanion {
             const faces = p.faces ?? p.denomination ?? 0;
             const bonus = p.bonus ?? 0;
             let str = `${num}d${faces}`;
-            if (bonus) str += bonus > 0 ? `+${bonus}` : `${bonus}`;
+            if (bonus) str += bonus > 0 ? ` + ${bonus}` : ` - ${Math.abs(bonus)}`;
             return str;
           }).filter(Boolean).join(' + ');
         }
@@ -1029,8 +1017,8 @@ class CombatCompanion {
       // Spell attack bonus
       const spellAtk = item.actor?.system?.attributes?.spellattack ?? 0;
       if (spellAtk) {
-        const sgn = spellAtk >= 0 ? '+' : '';
-        properties.push(`Attack ${sgn}${spellAtk}`);
+        const sign = spellAtk >= 0 ? '+' : '';
+        properties.push(`Attack ${sign}${spellAtk}`);
       }
       // Save DC
       const spellDC = item.actor?.system?.attributes?.spelldc;
@@ -1046,7 +1034,7 @@ class CombatCompanion {
             const faces = p.faces ?? p.denomination ?? 0;
             const bonus = p.bonus ?? 0;
             let str = `${num}d${faces}`;
-            if (bonus) str += bonus > 0 ? `+${bonus}` : `${bonus}`;
+            if (bonus) str += bonus > 0 ? ` + ${bonus}` : ` - ${Math.abs(bonus)}`;
             return str;
           }).filter(Boolean).join(' + ');
         }

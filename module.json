@@ -1,8 +1,8 @@
 {
   "id": "combat-companion",
   "title": "Combat Companion",
-  "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.6.2: Fixed resource notification spam, description popup XSS via entity un-escaping, fallback roll sign bug for negative modifiers.",
-  "version": "1.6.2",
+  "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.6.3: Removed dead code (reactionItems, shortDesc, labels, isNPC); fixed unawaited settings save; fixed popout/sidebar state inconsistency; deduplicated menu button HTML; normalized variable naming and damage formatting; hardened spell attack detection for dnd5e v4.x key-based types.",
+  "version": "1.6.3",
   "authors": [
     {
       "name": "Steve",
