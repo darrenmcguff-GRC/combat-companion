@@ -5,13 +5,13 @@ Persistent tactical HUD for Foundry VTT (D&D 5e). Replaces the character-sheet t
 
 ---
 
-## Current Version: v1.6.4
+## Current Version: v1.6.5
 
 ### File Layout
 ```
 combat-companion/
 ├── module.json
-├── scripts/main.js         (~1470 lines)
+├── scripts/main.js         (~1520 lines)
 ├── styles/combat-companion.css (~630 lines)
 ├── sidebar.html            (popout template)
 ├── README.md
@@ -28,18 +28,18 @@ combat-companion/
 
 ---
 
-## Features (v1.6.4)
+## Features (v1.6.5)
 
 | Section | Description |
 |---------|-------------|
 | **Actor Card** | Portrait, AC, HP bar with colour by percentage, temp HP, ability scores (click to roll) |
 | **Death Saves** | Visual dot tracker (fails/passes), auto-shows for dying/negative HP/massive death, +/- buttons, reset |
 | **HP Controls** | Heal, damage (temp HP absorbs first), temp HP add/clear, massive damage auto-death |
-| **Action Economy** | Action, Bonus Action, Reaction trackers (click to spend/restore). Auto-clears reaction on new combat round. Auto-detects reaction use via `dnd5e.useItem` and `dnd5e.rollAttack` hooks. Legacy flag-based fallback for all three types. |
+| **Action Economy** | Action, Bonus Action, Reaction trackers (click to spend/restore). Auto-clears all three on new combat round. Auto-detects reaction use via `dnd5e.useItem` and `dnd5e.rollAttack` hooks. Legacy flag-based fallback for all three types (now fully functional — flags are both read and cleared). |
 | **Saving Throws** | All six abilities with modifier + proficiency indicator. Click to roll. |
 | **Skills** | All 18 skills with total modifier, ability abbreviation, proficiency icon. Click to roll. |
 | **Conditions** | Active condition chips + concentration indicator chip |
-| **Weapons** | Equipped weapons with resolved attack bonus + damage string. Filterable by type. Right-click for description popup. |
+| **Weapons** | Equipped weapons with resolved attack bonus + damage string. Filterable by type. Right-click for description popup with full damage chain and weapon properties. |
 | **Features & Abilities** | All feats with action type badges (A/B/R/P/O), uses/recharge info. Filterable by action type. Right-click for description popup. |
 | **Prepared Spells** | Prepared spells only with action type badges, attack/DC/damage info. Filterable by spell level. Right-click for description popup. |
 | **Spell Slots** | Visual dot tracker per level + Pact Magic. +/- buttons. |
@@ -64,6 +64,7 @@ combat-companion/
 
 ## Recent Changelog
 
+- **v1.6.5** — Fixed legacy action/bonus flags never cleared on turn change (now auto-restore on new round); fixed legacy action/bonus flags never read in `_buildData` (toggle was completely broken — clicking Action/Bonus wrote flags but UI never reflected them); fixed spell damage `[object Object]` in description popup (raw objects in `attack.parts` now properly formatted); added full weapon damage fallback chain to popup (labels, formula, attack.parts, versatile, flattenObject scan — now matches `_weaponStats`); added weapon properties to popup (Finesse, Thrown, Two-Handed, Versatile, Light, Loading); extracted shared `_hasSpellAttack` helper (eliminated duplicated logic between `_spellsBox` and `_showItemDescription`); removed duplicate `_fmtDie` base fallback in `_weaponStats` (line 781 already handled it)
 - **v1.6.4** — Fixed feat popup double Action display; fixed spell popup showing both attack and DC unconditionally (now mirrors _spellsBox logic); fixed weapon damage null-safety in popup; fixed unawaited collapsed-box settings save; removed dead CSS (reaction-btn, reaction-avail, reaction-spent, react-items); fixed save regex to match "save" not just "saving"; added action/bonus legacy flag-based fallback; extracted shared _computeWeaponAttack helper (eliminated ~40 lines of duplication); expanded spell damage fallback strategies in popup
 - **v1.6.3** — Removed dead code (reactionItems, shortDesc, labels, isNPC); fixed unawaited settings save (drag/resize position now persists reliably); fixed popout/sidebar state inconsistency (hudOpen set false when popout opens); deduplicated menu button HTML; normalized variable naming (sgn→sign) and damage formatting (spell bonus now matches weapon style); hardened spell attack detection for dnd5e v4.x key-based types (rwak, mwak, etc.)
 - **v1.6.2** — Fixed resource notification spam (warning fired on every change); fixed description popup XSS via entity un-escaping (entities now decoded before tag stripping); fixed fallback roll sign bug (negative modifiers lost minus sign in ability/skill/save rolls)

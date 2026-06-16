@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.6.4`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.6.5`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -49,7 +49,7 @@ Hooks.on('controlToken',      () => CombatCompanion.refreshDebounced());
 Hooks.on('updateActor',       () => CombatCompanion.refreshDebounced());
 Hooks.on('updateItem',        () => CombatCompanion.refreshDebounced());
 Hooks.on('updateCombat',      (combat, updated) => {
-  // When turn changes, the new active combatant regains their reaction
+  // When turn changes, the new active combatant regains their action, bonus, and reaction
   if (updated?.turn !== undefined) {
     const tokenId = combat.combatant?.token?.id;
     if (tokenId) {
@@ -57,6 +57,10 @@ Hooks.on('updateCombat',      (combat, updated) => {
       if (token?.actor) {
         token.actor.unsetFlag(MODULE_ID, 'reactionUsedRound').catch(()=>{});
         token.actor.unsetFlag(MODULE_ID, 'reactionSpentManual').catch(()=>{});
+        token.actor.unsetFlag(MODULE_ID, 'actionSpentRound').catch(()=>{});
+        token.actor.unsetFlag(MODULE_ID, 'actionSpentManual').catch(()=>{});
+        token.actor.unsetFlag(MODULE_ID, 'bonusSpentRound').catch(()=>{});
+        token.actor.unsetFlag(MODULE_ID, 'bonusSpentManual').catch(()=>{});
       }
     }
   }
@@ -356,6 +360,23 @@ class CombatCompanion {
         actionAvailable = typeof u.action === 'number' ? u.action > 0 : true;
         bonusAvailable = typeof u.bonus === 'number' ? u.bonus > 0 : true;
         reactionAvailable = typeof u.reaction === 'number' ? u.reaction > 0 : true;
+      }
+      // Legacy flag-based fallback: check action/bonus spent flags
+      if (actionAvailable) {
+        const actionLastUsed = actor.getFlag(MODULE_ID, 'actionSpentRound');
+        if (actionLastUsed && game.combat && game.combat.started && game.combat.round === actionLastUsed) {
+          actionAvailable = false;
+        } else if (actor.getFlag(MODULE_ID, 'actionSpentManual')) {
+          actionAvailable = false;
+        }
+      }
+      if (bonusAvailable) {
+        const bonusLastUsed = actor.getFlag(MODULE_ID, 'bonusSpentRound');
+        if (bonusLastUsed && game.combat && game.combat.started && game.combat.round === bonusLastUsed) {
+          bonusAvailable = false;
+        } else if (actor.getFlag(MODULE_ID, 'bonusSpentManual')) {
+          bonusAvailable = false;
+        }
       }
       // Check for reaction-spent flags in active effects
       if (reactionAvailable && actor.effects?.length) {
@@ -747,6 +768,15 @@ class CombatCompanion {
     return Math.round((prof * profMult) + abiMod + magic + flatBonus);
   }
 
+  /* ── Shared spell attack detection ─────────────────────────────── */
+  static _hasSpellAttack(act) {
+    if (!act) return false;
+    const atkType = act.attack?.type;
+    return act.attack === true
+      || (typeof atkType === 'string' && (atkType === 'ranged' || atkType === 'melee' || atkType.includes('touch') || atkType.startsWith('rw') || atkType.startsWith('mw')))
+      || (typeof act.attack === 'object' && act.attack !== null && Object.keys(act.attack).length > 0);
+  }
+
   static _weaponStats(w) {
     try {
       const s = w.system||{};
@@ -783,9 +813,6 @@ class CombatCompanion {
       if (!dmg && s.damage) {
         const flat = Object.values(foundry.utils.flattenObject(s.damage));
         for (const v of flat) { if (typeof v==='string'&&v.match(/\d+d\d+/)){dmg=v;break;} }
-      }
-      if (!dmg && s.damage?.base?.number&&(s.damage.base.faces||s.damage.base.denomination)) {
-        dmg = `${s.damage.base.number}d${s.damage.base.faces||s.damage.base.denomination}`;
       }
       if (typeof dmg==='string' && dmg.match(/[@$][a-zA-Z_]/)) {
         try {
@@ -859,10 +886,7 @@ class CombatCompanion {
         const act = activities?.[0];
         if (act) {
           // Spell attack bonus — check for any attack configuration
-          const atkType = act.attack?.type;
-          const hasAttack = act.attack === true
-            || (typeof atkType === 'string' && (atkType === 'ranged' || atkType === 'melee' || atkType.includes('touch') || atkType.startsWith('rw') || atkType.startsWith('mw')))
-            || (typeof act.attack === 'object' && act.attack !== null && Object.keys(act.attack).length > 0);
+          const hasAttack = CombatCompanion._hasSpellAttack(act);
           if (hasAttack) {
             const spellAtk = s.actor?.system?.attributes?.spellattack ?? 0;
             const sign = spellAtk >= 0 ? '+' : '';
@@ -974,9 +998,10 @@ class CombatCompanion {
       const atk = this._computeWeaponAttack(item);
       const sign = atk >= 0 ? '+' : '';
       properties.push(`Attack ${sign}${atk}`);
-      // Damage from v4 activities
+      // Damage: full fallback chain matching _weaponStats
       const s = item.system || {};
       let dmgStr = '';
+      // v4: activities.contents[0].damage.parts
       try {
         const activities = s.activities?.contents || Object.values(s.activities || {});
         const act = activities?.[0];
@@ -991,10 +1016,30 @@ class CombatCompanion {
           }).filter(Boolean).join(' + ');
         }
       } catch(e){}
-      if (!dmgStr && s.damage?.parts?.length) dmgStr = s.damage.parts.map(p => Array.isArray(p) ? p[0] : p).join(' + ');
-      if (!dmgStr && s.damage?.base?.number && (s.damage.base.faces || s.damage.base.denomination)) dmgStr = `${s.damage.base.number}d${s.damage.base.faces || s.damage.base.denomination}`;
+      // Fallback: labels (dnd5e computed)
+      if (!dmgStr && item.labels?.damage) dmgStr = String(item.labels.damage);
+      // Fallback: legacy damage fields
+      if (!dmgStr && s.damage?.formula) dmgStr = s.damage.formula;
+      if (!dmgStr && s.formula) dmgStr = s.formula;
+      if (!dmgStr && s.attack?.parts?.length) dmgStr = s.attack.parts.map(p => Array.isArray(p) ? p[0] : (typeof p === 'object' && p !== null ? (p.number ? `${p.number}d${p.faces||p.denomination||0}` : String(p)) : String(p))).filter(Boolean).join(' + ');
+      if (!dmgStr && s.damage?.parts?.length) dmgStr = s.damage.parts.map(p => Array.isArray(p) ? p[0] : (typeof p === 'object' && p !== null ? (p.number ? `${p.number}d${p.faces||p.denomination||0}` : String(p)) : String(p))).filter(Boolean).join(' + ');
+      if (!dmgStr && s.damage?.base) dmgStr = this._fmtDie(s.damage.base, item);
+      if (!dmgStr && s.damage?.versatile) dmgStr = this._fmtDie(s.damage.versatile, item);
+      if (!dmgStr && s.damage) {
+        const flat = Object.values(foundry.utils.flattenObject(s.damage));
+        for (const v of flat) { if (typeof v==='string'&&v.match(/\d+d\d+/)){dmgStr=v;break;} }
+      }
       if (dmgStr) properties.push(`Damage: ${dmgStr}`);
       if (s.range?.value) properties.push(`Range: ${s.range.value} ft`);
+      // Weapon properties
+      const props = [];
+      const propList = s.properties;
+      if (Array.isArray(propList)) {
+        for (const p of propList) { if(p==='fin'||p==='finesse')props.push('Finesse'); if(p==='thr'||p==='thrown')props.push('Thrown'); if(p==='two'||p==='twoHanded')props.push('Two-Handed'); if(p==='ver'||p==='versatile')props.push('Versatile'); if(p==='lgt'||p==='light')props.push('Light'); if(p==='lod'||p==='loading')props.push('Loading'); }
+      } else if (typeof propList==='object'&&propList!==null) {
+        if (propList.fin||propList.finesse)props.push('Finesse'); if (propList.thr||propList.thrown)props.push('Thrown'); if (propList.two||propList.twoHanded)props.push('Two-Handed'); if (propList.ver||propList.versatile)props.push('Versatile'); if (propList.lgt||propList.light)props.push('Light'); if (propList.lod||propList.loading)props.push('Loading');
+      }
+      if (props.length) properties.push(`Properties: ${props.join(', ')}`);
     }
     if (type === 'spell') {
       const lvl = sys.level ?? 0;
@@ -1006,10 +1051,7 @@ class CombatCompanion {
         const activities = sys.activities?.contents || Object.values(sys.activities || {});
         const act = activities?.[0];
         if (act) {
-          const atkType = act.attack?.type;
-          hasAttack = act.attack === true
-            || (typeof atkType === 'string' && (atkType === 'ranged' || atkType === 'melee' || atkType.includes('touch') || atkType.startsWith('rw') || atkType.startsWith('mw')))
-            || (typeof act.attack === 'object' && act.attack !== null && Object.keys(act.attack).length > 0);
+          hasAttack = CombatCompanion._hasSpellAttack(act);
         }
       } catch(e){}
       // Spell attack bonus — only if it's an attack spell
@@ -1046,8 +1088,8 @@ class CombatCompanion {
       // Fallback: legacy damage fields
       if (!spellDmg && sys.damage?.formula) spellDmg = sys.damage.formula;
       if (!spellDmg && sys.formula) spellDmg = sys.formula;
-      if (!spellDmg && sys.attack?.parts?.length) spellDmg = sys.attack.parts.map(p => Array.isArray(p) ? p[0] : String(p)).filter(Boolean).join(' + ');
-      if (!spellDmg && sys.damage?.parts?.length) spellDmg = sys.damage.parts.map(p => Array.isArray(p) ? p[0] : p).join(' + ');
+      if (!spellDmg && sys.attack?.parts?.length) spellDmg = sys.attack.parts.map(p => Array.isArray(p) ? p[0] : (typeof p === 'object' && p !== null ? (p.number ? `${p.number}d${p.faces||p.denomination||0}` : String(p)) : String(p))).filter(Boolean).join(' + ');
+      if (!spellDmg && sys.damage?.parts?.length) spellDmg = sys.damage.parts.map(p => Array.isArray(p) ? p[0] : (typeof p === 'object' && p !== null ? (p.number ? `${p.number}d${p.faces||p.denomination||0}` : String(p)) : String(p))).filter(Boolean).join(' + ');
       if (!spellDmg && sys.damage?.base?.number && (sys.damage.base.faces || sys.damage.base.denomination)) spellDmg = `${sys.damage.base.number}d${sys.damage.base.faces || sys.damage.base.denomination}`;
       if (spellDmg) properties.push(`Damage: ${spellDmg}`);
       if (sys.duration?.value) properties.push(`Duration: ${sys.duration.value} ${sys.duration.units || ''}`);
