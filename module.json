@@ -1,8 +1,8 @@
 {
   "id": "combat-companion",
   "title": "Combat Companion",
-  "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.6.5: Fixed legacy action/bonus flags never cleared on turn change; fixed legacy action/bonus flags never read in _buildData (toggle was broken); fixed spell damage [object Object] in description popup; added full weapon damage fallback chain to popup; added weapon properties to popup; extracted shared _hasSpellAttack helper; removed duplicate _fmtDie fallback.",
-  "version": "1.6.5",
+  "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.6.6: Fixed [object Object] in weapon damage fallback chains (attack.parts/damage.parts); fixed action/bonus out-of-combat toggle writing to wrong flag name; fixed spell popup base damage to use _fmtDie (bonus handling + @mod resolution); added @mod resolution to weapon popup damage; added versatile + flattenObject fallbacks to spell popup damage; extracted shared _weaponProperties helper (deduplicated ~13 lines × 2 locations).",
+  "version": "1.6.6",
   "authors": [
     {
       "name": "Steve",

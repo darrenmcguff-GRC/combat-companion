@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.6.5`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.6.6`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -777,6 +777,18 @@ class CombatCompanion {
       || (typeof act.attack === 'object' && act.attack !== null && Object.keys(act.attack).length > 0);
   }
 
+  /* ── Shared weapon properties parser ──────────────────────────── */
+  static _weaponProperties(s) {
+    const props = [];
+    const propList = s.properties;
+    if (Array.isArray(propList)) {
+      for (const p of propList) { if(p==='fin'||p==='finesse')props.push('Finesse'); if(p==='thr'||p==='thrown')props.push('Thrown'); if(p==='two'||p==='twoHanded')props.push('Two-Handed'); if(p==='ver'||p==='versatile')props.push('Versatile'); if(p==='lgt'||p==='light')props.push('Light'); if(p==='lod'||p==='loading')props.push('Loading'); }
+    } else if (typeof propList==='object'&&propList!==null) {
+      if (propList.fin||propList.finesse)props.push('Finesse'); if (propList.thr||propList.thrown)props.push('Thrown'); if (propList.two||propList.twoHanded)props.push('Two-Handed'); if (propList.ver||propList.versatile)props.push('Versatile'); if (propList.lgt||propList.light)props.push('Light'); if (propList.lod||propList.loading)props.push('Loading');
+    }
+    return props;
+  }
+
   static _weaponStats(w) {
     try {
       const s = w.system||{};
@@ -806,8 +818,8 @@ class CombatCompanion {
       // Fallback: legacy damage fields
       if (!dmg && s.damage?.formula) dmg = s.damage.formula;
       if (!dmg && s.formula) dmg = s.formula;
-      if (!dmg && s.attack?.parts?.length) dmg = s.attack.parts.map(p=>Array.isArray(p)?p[0]:String(p)).filter(Boolean).join(' + ');
-      if (!dmg && s.damage?.parts?.length) dmg = s.damage.parts.map(p=>Array.isArray(p)?p[0]:String(p)).filter(Boolean).join(' + ');
+      if (!dmg && s.attack?.parts?.length) dmg = s.attack.parts.map(p=>Array.isArray(p)?p[0]:(typeof p==='object'&&p!==null?(p.number?`${p.number}d${p.faces||p.denomination||0}`:String(p)):String(p))).filter(Boolean).join(' + ');
+      if (!dmg && s.damage?.parts?.length) dmg = s.damage.parts.map(p=>Array.isArray(p)?p[0]:(typeof p==='object'&&p!==null?(p.number?`${p.number}d${p.faces||p.denomination||0}`:String(p)):String(p))).filter(Boolean).join(' + ');
       if (!dmg && s.damage?.base) dmg = this._fmtDie(s.damage.base, w);
       if (!dmg && s.damage?.versatile) dmg = this._fmtDie(s.damage.versatile, w);
       if (!dmg && s.damage) {
@@ -826,14 +838,8 @@ class CombatCompanion {
         } catch(e){}
       }
       dmg = dmg || '–';
-      const props=[];
-      const propList=s.properties;
-      if (Array.isArray(propList)) {
-        for (const p of propList) { if(p==='fin'||p==='finesse')props.push('Finesse'); if(p==='thr'||p==='thrown')props.push('Thrown'); if(p==='two'||p==='twoHanded')props.push('Two-Handed'); if(p==='ver'||p==='versatile')props.push('Versatile'); if(p==='lgt'||p==='light')props.push('Light'); if(p==='lod'||p==='loading')props.push('Loading'); }
-      } else if (typeof propList==='object'&&propList!==null) {
-        if (propList.fin||propList.finesse)props.push('Finesse'); if (propList.thr||propList.thrown)props.push('Thrown'); if (propList.two||propList.twoHanded)props.push('Two-Handed'); if (propList.ver||propList.versatile)props.push('Versatile'); if (propList.lgt||propList.light)props.push('Light'); if (propList.lod||propList.loading)props.push('Loading');
-      }
-      const propStr=props.length?props.join(', ')+' · ':'';
+      const props = this._weaponProperties(s);
+      const propStr = props.length ? props.join(', ') + ' · ' : '';
       const sign=atk>=0?'+':'';
       return `${propStr}${sign}${atk} / ${dmg}`;
     } catch(e){ console.warn('[Combat Companion] weaponStats error:',w?.name,e); return '–'; }
@@ -1029,16 +1035,22 @@ class CombatCompanion {
         const flat = Object.values(foundry.utils.flattenObject(s.damage));
         for (const v of flat) { if (typeof v==='string'&&v.match(/\d+d\d+/)){dmgStr=v;break;} }
       }
+      // Resolve @mod references in damage string
+      if (typeof dmgStr==='string' && dmgStr.match(/[@$][a-zA-Z_]/)) {
+        try {
+          const sourceData = (item.getRollData ? item.getRollData() : null) || (item.actor?.getRollData ? item.actor.getRollData() : null) || null;
+          if (sourceData) {
+            let resolved = dmgStr;
+            const refs = dmgStr.match(/[@$][a-zA-Z_][\w.]*/g) || [];
+            for (const ref of refs) { const path = ref.slice(1).split('.'); let val = sourceData; for (const p of path) { val = val?.[p]; } if (typeof val === 'number' && !Number.isNaN(val)) { resolved = resolved.split(ref).join(String(val)); } }
+            if (resolved !== dmgStr) dmgStr = resolved;
+          }
+        } catch(e){}
+      }
       if (dmgStr) properties.push(`Damage: ${dmgStr}`);
       if (s.range?.value) properties.push(`Range: ${s.range.value} ft`);
       // Weapon properties
-      const props = [];
-      const propList = s.properties;
-      if (Array.isArray(propList)) {
-        for (const p of propList) { if(p==='fin'||p==='finesse')props.push('Finesse'); if(p==='thr'||p==='thrown')props.push('Thrown'); if(p==='two'||p==='twoHanded')props.push('Two-Handed'); if(p==='ver'||p==='versatile')props.push('Versatile'); if(p==='lgt'||p==='light')props.push('Light'); if(p==='lod'||p==='loading')props.push('Loading'); }
-      } else if (typeof propList==='object'&&propList!==null) {
-        if (propList.fin||propList.finesse)props.push('Finesse'); if (propList.thr||propList.thrown)props.push('Thrown'); if (propList.two||propList.twoHanded)props.push('Two-Handed'); if (propList.ver||propList.versatile)props.push('Versatile'); if (propList.lgt||propList.light)props.push('Light'); if (propList.lod||propList.loading)props.push('Loading');
-      }
+      const props = this._weaponProperties(s);
       if (props.length) properties.push(`Properties: ${props.join(', ')}`);
     }
     if (type === 'spell') {
@@ -1090,7 +1102,24 @@ class CombatCompanion {
       if (!spellDmg && sys.formula) spellDmg = sys.formula;
       if (!spellDmg && sys.attack?.parts?.length) spellDmg = sys.attack.parts.map(p => Array.isArray(p) ? p[0] : (typeof p === 'object' && p !== null ? (p.number ? `${p.number}d${p.faces||p.denomination||0}` : String(p)) : String(p))).filter(Boolean).join(' + ');
       if (!spellDmg && sys.damage?.parts?.length) spellDmg = sys.damage.parts.map(p => Array.isArray(p) ? p[0] : (typeof p === 'object' && p !== null ? (p.number ? `${p.number}d${p.faces||p.denomination||0}` : String(p)) : String(p))).filter(Boolean).join(' + ');
-      if (!spellDmg && sys.damage?.base?.number && (sys.damage.base.faces || sys.damage.base.denomination)) spellDmg = `${sys.damage.base.number}d${sys.damage.base.faces || sys.damage.base.denomination}`;
+      if (!spellDmg && sys.damage?.base) spellDmg = this._fmtDie(sys.damage.base, item);
+      if (!spellDmg && sys.damage?.versatile) spellDmg = this._fmtDie(sys.damage.versatile, item);
+      if (!spellDmg && sys.damage) {
+        const flat = Object.values(foundry.utils.flattenObject(sys.damage));
+        for (const v of flat) { if (typeof v==='string'&&v.match(/\d+d\d+/)){spellDmg=v;break;} }
+      }
+      // Resolve @mod references in damage string
+      if (typeof spellDmg==='string' && spellDmg.match(/[@$][a-zA-Z_]/)) {
+        try {
+          const sourceData = (item.getRollData ? item.getRollData() : null) || (item.actor?.getRollData ? item.actor.getRollData() : null) || null;
+          if (sourceData) {
+            let resolved = spellDmg;
+            const refs = spellDmg.match(/[@$][a-zA-Z_][\w.]*/g) || [];
+            for (const ref of refs) { const path = ref.slice(1).split('.'); let val = sourceData; for (const p of path) { val = val?.[p]; } if (typeof val === 'number' && !Number.isNaN(val)) { resolved = resolved.split(ref).join(String(val)); } }
+            if (resolved !== spellDmg) spellDmg = resolved;
+          }
+        } catch(e){}
+      }
       if (spellDmg) properties.push(`Damage: ${spellDmg}`);
       if (sys.duration?.value) properties.push(`Duration: ${sys.duration.value} ${sys.duration.units || ''}`);
       if (sys.range?.value) properties.push(`Range: ${sys.range.value} ft`);
@@ -1348,16 +1377,17 @@ class CombatCompanion {
           }
         } else {
           // Legacy flag-based action/bonus tracking
-          const flagKey = type === 'action' ? 'actionSpentRound' : 'bonusSpentRound';
-          const lastUsed = actor.getFlag(MODULE_ID, flagKey);
+          const roundFlag = type === 'action' ? 'actionSpentRound' : 'bonusSpentRound';
+          const manualFlag = type === 'action' ? 'actionSpentManual' : 'bonusSpentManual';
+          const lastUsed = actor.getFlag(MODULE_ID, roundFlag);
           if (lastUsed && game.combat && game.combat.started && game.combat.round === lastUsed) {
-            await actor.unsetFlag(MODULE_ID, flagKey);
+            await actor.unsetFlag(MODULE_ID, roundFlag);
           } else if (game.combat && game.combat.started) {
-            await actor.setFlag(MODULE_ID, flagKey, game.combat.round);
+            await actor.setFlag(MODULE_ID, roundFlag, game.combat.round);
           } else {
-            const nowManual = actor.getFlag(MODULE_ID, flagKey + 'Manual');
-            if (nowManual) { await actor.unsetFlag(MODULE_ID, flagKey + 'Manual'); }
-            else { await actor.setFlag(MODULE_ID, flagKey + 'Manual', true); }
+            const nowManual = actor.getFlag(MODULE_ID, manualFlag);
+            if (nowManual) { await actor.unsetFlag(MODULE_ID, manualFlag); }
+            else { await actor.setFlag(MODULE_ID, manualFlag, true); }
           }
         }
         CombatCompanion.refresh();
