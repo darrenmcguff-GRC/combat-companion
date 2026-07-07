@@ -1,8 +1,8 @@
 {
   "id": "combat-companion",
   "title": "Combat Companion",
-  "description": "A persistent tactical HUD for D&D 5e – action economy, ability scores, skills, conditions, reactions list, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.6.6: Fixed [object Object] in weapon damage fallback chains (attack.parts/damage.parts); fixed action/bonus out-of-combat toggle writing to wrong flag name; fixed spell popup base damage to use _fmtDie (bonus handling + @mod resolution); added @mod resolution to weapon popup damage; added versatile + flattenObject fallbacks to spell popup damage; extracted shared _weaponProperties helper (deduplicated ~13 lines × 2 locations).",
-  "version": "1.6.6",
+  "description": "A persistent tactical HUD for D&D 5e – action economy, multi-attack tracker, reactions list, ally-applied effects, combat-only features, ability scores, skills, conditions, spells with slots, weapon attacks, saving throws, features & abilities, and more. v1.7.0: Combat-only tracker panel with multi-attack dots, per-reaction-item spent state, ally-origin active effects (auras, bless, etc.) and self-combat features (Rage, Sneak Attack, Cunning Action). All state resets at the start of the actor's turn.",
+  "version": "1.7.0",
   "authors": [
     {
       "name": "Steve",

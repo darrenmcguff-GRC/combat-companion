@@ -1,7 +1,7 @@
 const MODULE_ID = 'combat-companion';
 
 /* ─── Diagnostic: confirm script load ───────────────────────────── */
-console.log(`%c[Combat Companion] Script loaded — v1.6.6`, 'color:#06b6d4;font-weight:bold');
+console.log(`%c[Combat Companion] Script loaded — v1.7.0`, 'color:#06b6d4;font-weight:bold');
 
 /* ─── Settings ──────────────────────────────────────────────────── */
 Hooks.on('init', () => {
@@ -55,12 +55,22 @@ Hooks.on('updateCombat',      (combat, updated) => {
     if (tokenId) {
       const token = canvas.tokens?.get(tokenId);
       if (token?.actor) {
-        token.actor.unsetFlag(MODULE_ID, 'reactionUsedRound').catch(()=>{});
-        token.actor.unsetFlag(MODULE_ID, 'reactionSpentManual').catch(()=>{});
-        token.actor.unsetFlag(MODULE_ID, 'actionSpentRound').catch(()=>{});
-        token.actor.unsetFlag(MODULE_ID, 'actionSpentManual').catch(()=>{});
-        token.actor.unsetFlag(MODULE_ID, 'bonusSpentRound').catch(()=>{});
-        token.actor.unsetFlag(MODULE_ID, 'bonusSpentManual').catch(()=>{});
+        const actor = token.actor;
+        actor.unsetFlag(MODULE_ID, 'reactionUsedRound').catch(()=>{});
+        actor.unsetFlag(MODULE_ID, 'reactionSpentManual').catch(()=>{});
+        actor.unsetFlag(MODULE_ID, 'actionSpentRound').catch(()=>{});
+        actor.unsetFlag(MODULE_ID, 'actionSpentManual').catch(()=>{});
+        actor.unsetFlag(MODULE_ID, 'bonusSpentRound').catch(()=>{});
+        actor.unsetFlag(MODULE_ID, 'bonusSpentManual').catch(()=>{});
+        // v1.7.0: Clear multi-attack-used + per-item reaction flags
+        try {
+          const flags = actor.flags?.[MODULE_ID] || {};
+          for (const k of Object.keys(flags)) {
+            if (k.startsWith('attackUsed_') || k.startsWith('reactionItemUsed_')) {
+              actor.unsetFlag(MODULE_ID, k).catch(()=>{});
+            }
+          }
+        } catch(e){}
       }
     }
   }
@@ -468,14 +478,111 @@ class CombatCompanion {
       }
     } catch(e){}
 
+    // Reaction items (from feats + spells that use a reaction) with per-item spent state
+    const reactionItems = [];
+    try {
+      for (const it of (actor.items||[])) {
+        const act = it.system?.activation?.type || '';
+        if (act === 'reaction' || act.includes('reaction')) {
+          const used = !!actor.getFlag(MODULE_ID, 'reactionItemUsed_' + it.id);
+          reactionItems.push({ item: it, used });
+        }
+      }
+    } catch(e){}
+
+    // ── Multi-attack detection (only meaningful in combat) ──
+    let attacksPerAction = 1;
+    try {
+      const att = attrs.attacks;
+      if (att) {
+        if (typeof att.count === 'number' && att.count > 0) {
+          attacksPerAction = att.count;
+        } else if (typeof att.value === 'number' && att.value > 0) {
+          // dnd5e v3: value is a formula like "1" or "2" — parse leading number
+          const m = String(att.value).match(/^\s*(\d+)/);
+          if (m) attacksPerAction = parseInt(m[1], 10) || 1;
+        }
+      }
+      // Fallback for NPCs: count of weapon-type actions
+      if (attacksPerAction === 1 && actor.type === 'npc') {
+        const npcActions = actor.items?.filter(i => i.type === 'weapon') || [];
+        if (npcActions.length > 1) attacksPerAction = npcActions.length;
+      }
+    } catch(e){}
+
+    // Build per-attack state, only when in combat (otherwise empty array → section hidden)
+    const attacks = [];
+    if (game.combat?.started) {
+      for (let i = 1; i <= attacksPerAction; i++) {
+        const used = !!actor.getFlag(MODULE_ID, 'attackUsed_' + i);
+        attacks.push({ n: i, used });
+      }
+    }
+
+    // ── Active effects from allies (auras, bless, etc.) ──
+    const allyEffects = [];
+    try {
+      for (const e of (actor.effects || [])) {
+        if (e.disabled === true) continue;
+        const originUuid = e.origin;
+        if (!originUuid) continue;
+        const originActor = fromUuidSync(originUuid)?.actor ?? fromUuidSync(originUuid);
+        if (!originActor || originActor.id === actor.id) continue;
+        let isAlly = false;
+        try {
+          const myToken = actor.token ?? actor.getActiveTokens?.()?.[0] ?? null;
+          const originToken = originActor.token ?? originActor.getActiveTokens?.()?.[0] ?? null;
+          const myDisp = myToken?.document?.disposition ?? actor.prototypeToken?.disposition;
+          const origDisp = originToken?.document?.disposition ?? originActor.prototypeToken?.disposition;
+          if (typeof myDisp === 'number' && typeof origDisp === 'number') {
+            isAlly = (myDisp === 1 && origDisp === 1) || (myDisp === 0 && origDisp === 0);
+          } else {
+            isAlly = true;
+          }
+        } catch(e2){ isAlly = true; }
+        if (!isAlly) continue;
+        allyEffects.push({
+          name: e.name || e.label || 'Effect',
+          originName: originActor.name || 'Ally',
+          icon: e.icon || null
+        });
+      }
+    } catch(e){}
+
+    // ── Self-features that trigger during combat (Rage, Sneak Attack, Cunning Action, etc.) ──
+    const combatFeatures = [];
+    try {
+      const usedKeys = new Set();
+      for (const it of features) {
+        const s = it.system || {};
+        const actType = s.activation?.type || '';
+        const isCombatTriggered =
+          actType === 'special' ||
+          actType === 'bonus' ||
+          (actType === 'none' && s.damage?.parts?.length > 0 && s.actionType === 'other');
+        if (isCombatTriggered && !usedKeys.has(it.id)) {
+          usedKeys.add(it.id);
+          combatFeatures.push({
+            id: it.id,
+            name: it.name,
+            activation: actType,
+            icon: it.img || null
+          });
+        }
+      }
+    } catch(e){}
+
     return {
       actor, img:actor.img||actor.prototypeToken?.texture?.src||'icons/svg/mystery-man.svg',
       name:actor.name||'Unknown', ac:acVal,
       hp:{current:hpCurrent, max:hpMax, temp:hpTemp, tempmax:hpTempmax},
       prof:profBonus, conditions, concentration, initiative:initVal,
       reactionAvailable, actionAvailable, bonusAvailable, weapons, spells, features, spellSlots, resources, savingThrows,
-      abilities, skills,
-      deathFails, deathPasses, isDying, massiveDeath
+      abilities, skills, reactionItems,
+      isNPC:actor.type==='npc',
+      labels:actor.labels||{},
+      deathFails, deathPasses, isDying, massiveDeath,
+      attacks, attacksPerAction, allyEffects, combatFeatures
     };
   }
 
@@ -507,6 +614,7 @@ class CombatCompanion {
     const sections = [
       this._actorCard(data),
       this._actionEconomyBox(data),
+      this._combatTrackerBox(data),  // returns '' if not in combat → no box rendered
       this._skillsBox(data),
       this._savingThrowsBox(data),
       this._conditionsBox(data),
@@ -611,6 +719,20 @@ class CombatCompanion {
     const aAvail = d.actionAvailable;
     const bAvail = d.bonusAvailable;
     const rAvail = d.reactionAvailable;
+    // Only show multi-attack dots if the actor actually has >1 attack per Attack action
+    const attacks = d.attacks || [];
+    const showAttacks = attacks.length > 1;
+    const attacksRow = showAttacks ? `
+      <div class="cc-attacks-row">
+        <span class="cc-attacks-label">Attacks</span>
+        ${attacks.map(a => `
+          <button class="cc-attack-dot ${a.used ? 'cc-attack-used' : 'cc-attack-avail'}"
+                  data-attack-n="${a.n}" title="${a.used ? 'Used' : 'Available'} — click to toggle">
+            <span class="cc-attack-num">${a.n}</span>
+            <span class="cc-attack-icon">${a.used ? '✓' : '⚔'}</span>
+          </button>
+        `).join('')}
+      </div>` : '';
     return this._wrap('Actions', `
       <div class="cc-action-row">
         <button class="cc-action-btn ${aAvail ? 'cc-act-avail' : 'cc-act-spent'}" data-action-type="action">
@@ -625,7 +747,73 @@ class CombatCompanion {
           <span class="cc-act-label">Reaction</span>
           <span class="cc-act-icon">${rAvail ? '🛡️' : '⛔'}</span>
         </button>
-      </div>`);
+      </div>
+      ${attacksRow}`);
+  }
+
+  /* ─── Combat Tracker (only shown in combat) ──────────────────── */
+  static _combatTrackerBox(d) {
+    // Hard guard: only render in active combat
+    if (!game.combat?.started) return '';
+
+    // ── Reactions (list, with per-item spent state) ──
+    const reactionItems = d.reactionItems || [];
+    const reactionsHtml = reactionItems.length === 0
+      ? `<div class="cc-empty-mini">No reactions</div>`
+      : reactionItems.map(({ item, used }) => `
+          <button class="cc-reaction-item ${used ? 'cc-reaction-spent' : 'cc-reaction-avail'}"
+                  data-reaction-item-id="${item.id}" title="${used ? 'Spent this round' : 'Available — click to mark spent'}">
+            ${item.img ? `<img src="${item.img}" alt=""/>` : '<i class="fas fa-bolt"></i>'}
+            <span class="cc-reaction-name">${item.name}</span>
+            <span class="cc-reaction-state">${used ? '⛔' : '🛡'}</span>
+          </button>
+        `).join('');
+
+    // ── Self-features that fire in combat (Rage, Sneak Attack, Cunning Action, etc.) ──
+    const combatFeatures = d.combatFeatures || [];
+    const featuresHtml = combatFeatures.length === 0
+      ? ''
+      : `<div class="cc-ct-subgroup">
+          <h5 class="cc-ct-subhead">Combat features</h5>
+          <div class="cc-feature-list">
+            ${combatFeatures.map(f => `
+              <div class="cc-feature-chip" data-item-id="${f.id}">
+                ${f.icon ? `<img src="${f.icon}" alt=""/>` : '<i class="fas fa-star"></i>'}
+                <span>${f.name}</span>
+                ${f.activation === 'bonus' ? '<span class="cc-feat-tag">BA</span>' :
+                  f.activation === 'special' ? '<span class="cc-feat-tag">⚡</span>' : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>`;
+
+    // ── Ally effects (auras, bless, haste from party members) ──
+    const allyEffects = d.allyEffects || [];
+    const allyHtml = allyEffects.length === 0
+      ? ''
+      : `<div class="cc-ct-subgroup">
+          <h5 class="cc-ct-subhead">From allies</h5>
+          <div class="cc-ally-list">
+            ${allyEffects.map(e => `
+              <div class="cc-ally-chip" title="From ${e.originName}">
+                ${e.icon ? `<img src="${e.icon}" alt=""/>` : '<i class="fas fa-shield-heart"></i>'}
+                <span class="cc-ally-name">${e.name}</span>
+                <span class="cc-ally-from">${e.originName}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>`;
+
+    const round = game.combat?.round ?? '?';
+
+    return this._wrap(`Combat · Round ${round}`, `
+      <div class="cc-ct-reactions">
+        <h5 class="cc-ct-subhead">Reactions</h5>
+        <div class="cc-reaction-list">${reactionsHtml}</div>
+      </div>
+      ${featuresHtml}
+      ${allyHtml}
+    `);
   }
 
   /* ─── Skills ─────────────────────────────────────────────────── */
@@ -1503,6 +1691,53 @@ class CombatCompanion {
           flavor: `${label} Saving Throw`
         });
       } catch(e2) { console.warn('[Combat Companion] save roll fallback failed:', e2); }
+    });
+
+    // Multi-attack dots — toggle "this attack has been used"
+    $('.cc-attack-dot').off('click.cc-attack').on('click.cc-attack', async function(){
+      const actor = CombatCompanion.actor;
+      if (!actor) return;
+      const n = $(this).data('attack-n');
+      const flagKey = 'attackUsed_' + n;
+      const currentlyUsed = !!actor.getFlag(MODULE_ID, flagKey);
+      try {
+        if (currentlyUsed) {
+          await actor.unsetFlag(MODULE_ID, flagKey);
+        } else {
+          await actor.setFlag(MODULE_ID, flagKey, true);
+        }
+        CombatCompanion.refresh();
+      } catch(e){ console.warn('[Combat Companion] attack toggle failed:', e); }
+    });
+
+    // Reaction item — toggle per-item spent state
+    $('.cc-reaction-item').off('click.cc-reaction').on('click.cc-reaction', async function(){
+      const actor = CombatCompanion.actor;
+      if (!actor) return;
+      const itemId = $(this).data('reaction-item-id');
+      const flagKey = 'reactionItemUsed_' + itemId;
+      const currentlyUsed = !!actor.getFlag(MODULE_ID, flagKey);
+      try {
+        if (currentlyUsed) {
+          await actor.unsetFlag(MODULE_ID, flagKey);
+        } else {
+          await actor.setFlag(MODULE_ID, flagKey, true);
+        }
+        // Also flag the overall reaction as spent, so the economy bar updates
+        if (game.combat?.started) {
+          await actor.setFlag(MODULE_ID, 'reactionUsedRound', game.combat.round).catch(()=>{});
+        }
+        CombatCompanion.refresh();
+      } catch(e){ console.warn('[Combat Companion] reaction toggle failed:', e); }
+    });
+
+    // Combat feature chip — right click for description popup
+    $('.cc-feature-chip').off('contextmenu.cc-feat').on('contextmenu.cc-feat', function(e){
+      e.preventDefault(); e.stopPropagation();
+      const actor = CombatCompanion.actor; if (!actor) return;
+      const itemId = $(this).data('item-id');
+      const item = actor.items.get(itemId); if (!item) return;
+      CombatCompanion._showItemDescription(item, e);
     });
   }
 }

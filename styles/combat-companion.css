@@ -629,3 +629,175 @@
 .cc-act-spent:hover { opacity: 0.9; }
 .cc-act-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
 .cc-act-icon { font-size: 18px; line-height: 1; }
+
+/* ─── Multi-attack dots (v1.7.0) ─────────────────────────────── */
+.cc-attacks-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.cc-attacks-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #8898a8;
+  margin-right: 2px;
+}
+.cc-attack-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-width: 38px;
+  border: 1px solid #2c3e50;
+  border-radius: 999px;
+  background: #111522;
+  color: #ccd6e4;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cc-attack-dot:hover { border-color: #f39c12; background: #0d1320; }
+.cc-attack-avail { color: #ccd6e4; }
+.cc-attack-used {
+  color: #667788;
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+.cc-attack-num { font-weight: 700; }
+.cc-attack-icon { font-size: 12px; line-height: 1; }
+
+/* ─── Combat Tracker Box (v1.7.0) ────────────────────────────── */
+.cc-combat-tracker { /* wrapper set by _wrap() */ }
+.cc-ct-subgroup { margin-top: 10px; }
+.cc-ct-subhead {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8898a8;
+  margin: 0 0 4px 2px;
+}
+.cc-ct-reactions { display: flex; flex-direction: column; gap: 4px; }
+.cc-reaction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cc-reaction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #2c3e50;
+  border-radius: 6px;
+  background: #111522;
+  color: #ccd6e4;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cc-reaction-item:hover { border-color: #f39c12; background: #0d1320; }
+.cc-reaction-item img,
+.cc-reaction-item i {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.cc-reaction-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+.cc-reaction-state { font-size: 14px; line-height: 1; }
+.cc-reaction-spent {
+  color: #667788;
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.cc-reaction-spent .cc-reaction-state { color: #cc4444; opacity: 1; text-decoration: none; }
+.cc-reaction-avail .cc-reaction-state { color: #6cbf6c; }
+.cc-empty-mini {
+  font-size: 11px;
+  color: #667788;
+  font-style: italic;
+  padding: 4px 6px;
+}
+
+/* ─── Combat feature chips (Rage, Sneak Attack, Cunning Action, etc.) ── */
+.cc-feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cc-feature-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid #2c3e50;
+  border-radius: 999px;
+  background: #111522;
+  color: #ccd6e4;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: context-menu;
+}
+.cc-feature-chip img,
+.cc-feature-chip i {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.cc-feat-tag {
+  font-size: 9px;
+  font-weight: 700;
+  background: #f39c12;
+  color: #1a1a1a;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 2px;
+  letter-spacing: 0.3px;
+}
+
+/* ─── Ally-applied active effects (auras, bless, haste) ──────── */
+.cc-ally-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cc-ally-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid #2a4a3a;
+  border-radius: 6px;
+  background: #0f1f18;
+  color: #b8d4c4;
+}
+.cc-ally-chip img,
+.cc-ally-chip i {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+  color: #6cbf8a;
+}
+.cc-ally-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+.cc-ally-from {
+  font-size: 10px;
+  color: #6c8a7a;
+  font-style: italic;
+}
